@@ -33,6 +33,8 @@ def jpg() -> bytes:
 
 def fake_modules(request: httpx.Request) -> httpx.Response:
     host, path = request.url.host, request.url.path
+    if path == "/health":
+        return httpx.Response(200, json={"status": "ok"})
     if path == "/v1/info":
         if host == "vlm":
             return httpx.Response(503, json={"detail": "loading"})

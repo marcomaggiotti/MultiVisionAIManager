@@ -1,9 +1,10 @@
 # MultiVision AI Manager
 
-A hub that manages several computer-vision modules, each running in its own Docker
-container with its own API and web page. The manager is the master: it registers the
-modules, checks their health, forwards the web interface's calls to them and
-orchestrates them in pipelines. The first use case is **movement in sport**, starting
+A hub that manages several computer-vision modules. **Every module is a separate web
+service** (its own container, API and web page). The manager is the master: it
+**launches and stops the modules** (from the dashboard, or automatically when a pipeline
+or the web interface needs one), checks their health, forwards the web interface's calls
+to them and **triggers** them in pipelines. The first use case is **movement in sport**, starting
 with **classical ballet**, on **single pictures or sequences of pictures** (no video yet).
 
 ```mermaid
@@ -31,9 +32,38 @@ flowchart TB
 
 ## Modules
 
-Every module is an independent service that serves `GET /health`, `GET /v1/info`
-(name, model, device, capabilities) and its own web page at `/ui/`. Add a module by
-implementing those and listing it in `MANAGER_MODULES`.
+Every module is an independent web service that serves `GET /health`, `GET /v1/info`
+(name, model, device, capabilities) and its own web page at `/ui/`.
+
+### How the manager launches and triggers them
+
+The registry [`modules.json`](modules.json) lists each module: where its web service
+answers, its source repository, and how the manager launches it:
+
+```json
+{"name": "yolo", "url": "http://yolo:8000",
+ "repository": "https://github.com/marcomaggiotti/detect_image_engine",
+ "launcher": {"type": "docker", "service": "yolo"},
+ "autostart": true, "idle_stop_minutes": 0, "start_timeout": 300}
+```
+
+| Launcher | What the manager does |
+| --- | --- |
+| `docker` | Starts/stops the module's container (created by `start.sh`) through the Docker socket |
+| `process` | Runs the module as a local process ([`modules.local.json`](modules.local.json), development without Docker) |
+| `none` | Only talks to a service started elsewhere |
+
+- **On demand**: with `autostart`, a module is launched the first time a pipeline or the
+  web interface calls it, and the call waits until it answers (up to `start_timeout`).
+- **By hand**: Start / Stop / Restart / Logs on each dashboard card, or the API:
+  `POST /api/manage/<name>/start|stop|restart`, `GET /api/manage/<name>/logs`.
+- **Idle stop**: `idle_stop_minutes` stops a module again after that long without calls,
+  freeing GPU memory (the VLM: 30 minutes by default).
+- **Triggering**: the web interface reaches each module at `/api/modules/<name>/...`;
+  the ballet pipeline (`POST /api/analyze`) calls YOLO, CLIP and the VLM in turn.
+
+To add a module: give it `/health`, `/v1/info` and a page, add a service with
+`profiles: [modules]` to `docker-compose.yml`, and an entry to `modules.json`.
 
 ### YOLO: detection & pose
 
@@ -103,8 +133,12 @@ Requirements: Docker with Compose v2.24+. For the GPU: an NVIDIA driver and the
 ```bash
 git clone https://github.com/marcomaggiotti/MultiVisionAIManager
 cd MultiVisionAIManager
-./start.sh            # or: ./start.sh --cpu
+./start.sh            # or: ./start.sh --cpu        (./start.sh down to stop everything)
 ```
+
+`start.sh` starts the manager (web + API), and builds and creates the three module
+containers without running them: the manager launches each module when it is first
+needed, or when you press **Start** on the dashboard.
 
 The YOLO module is the [detect_image_engine](https://github.com/marcomaggiotti/detect_image_engine)
 repository, included as a git submodule in `modules/yolo`. `start.sh` clones it there
@@ -112,7 +146,7 @@ automatically when it is missing (or clone everything at once with
 `git clone --recursive ...`). `./start.sh --update` pulls its latest commits.
 Without the script: `git submodule update --init` then `docker compose up --build`.
 
-Open http://localhost:3000. The modules are also reachable directly:
+Open http://localhost:3000. Once launched, the modules are also reachable directly:
 YOLO http://localhost:8001/ui/, CLIP http://localhost:8002/ui/, VLM http://localhost:8003/ui/
 (each with `/docs`). The first start downloads the models (YOLO weights are baked into the
 image; CLIP and VLM go to the shared `hf-cache` volume).
@@ -129,15 +163,12 @@ the VLM (*VLM → Models → Unload*) before long YOLO or CLIP training on small
 
 ### Development without Docker
 
+The manager launches the modules as local processes with `modules.local.json`:
+
 ```bash
-# modules (each in its own terminal)
 git submodule update --init modules/yolo
-cd modules/yolo && pip install -e ".[ultralytics,dev]" && \
-  DETECT_MODEL_WEIGHTS=yolo11n-pose.pt DETECT_TARGET_CLASSES=person uvicorn app.main:app --port 8001
-cd modules/clip && pip install -e ".[dev]" && uvicorn app.main:app --port 8002
-cd modules/vlm && pip install -e ".[dev]" && uvicorn app.main:app --port 8003
-# manager
-cd manager/api && pip install -e ".[dev]" && uvicorn app.main:app --port 8080
+pip install -e "modules/yolo[ultralytics]" -e modules/clip -e modules/vlm
+cd manager/api && pip install -e ".[dev]" && MANAGER_REGISTRY=../../modules.local.json uvicorn app.main:app --port 8080
 cd manager/web && npm install && npm run dev      # http://localhost:5173
 ```
 
@@ -149,7 +180,9 @@ The CLIP and VLM suites build tiny random models offline, so they exercise the r
 
 ```
 docker-compose.yml          GPU stack            docker-compose.cpu.yml   CPU override
-manager/api/                hub: app/main.py (registry, proxy, routes), pipeline.py, pose.py, storage.py
+modules.json                module registry (Docker)   modules.local.json   same, local processes
+start.sh                    clone the YOLO module, build, create the modules, start the manager
+manager/api/                hub: main.py (routes, proxy), registry.py + launchers.py (launching), pipeline.py, pose.py
 manager/web/                React app: pages/ (Dashboard, Analyze, YoloStudio, ClipStudio, VlmStudio)
 modules/clip/               CLIP module: engine.py, analysis.py, gallery.py, training.py, static/ (own page)
 modules/vlm/                VLM module: engine.py, training.py (LoRA, evaluation), metrics.py, static/

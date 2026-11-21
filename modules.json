@@ -1,0 +1,34 @@
+{
+  "modules": [
+    {
+      "name": "yolo",
+      "title": "YOLO detection & pose",
+      "url": "http://yolo:8000",
+      "repository": "https://github.com/marcomaggiotti/detect_image_engine",
+      "launcher": { "type": "docker", "service": "yolo" },
+      "autostart": true,
+      "idle_stop_minutes": 0,
+      "start_timeout": 300
+    },
+    {
+      "name": "clip",
+      "title": "CLIP image-text embeddings",
+      "url": "http://clip:8000",
+      "repository": "modules/clip",
+      "launcher": { "type": "docker", "service": "clip" },
+      "autostart": true,
+      "idle_stop_minutes": 0,
+      "start_timeout": 600
+    },
+    {
+      "name": "vlm",
+      "title": "Vision-language models",
+      "url": "http://vlm:8000",
+      "repository": "modules/vlm",
+      "launcher": { "type": "docker", "service": "vlm" },
+      "autostart": true,
+      "idle_stop_minutes": 30,
+      "start_timeout": 900
+    }
+  ]
+}

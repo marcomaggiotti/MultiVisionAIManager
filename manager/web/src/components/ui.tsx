@@ -87,7 +87,7 @@ export function ErrorBox({ error }: { error?: string | null }) {
 }
 
 export function Status({ status }: { status: string }) {
-  const tone = { online: "good", completed: "good", running: "warn", offline: "bad", failed: "bad", cancelled: "bad", interrupted: "bad" }[status] ?? "";
+  const tone = { online: "good", completed: "good", running: "warn", starting: "warn", offline: "bad", failed: "bad", cancelled: "bad", interrupted: "bad" }[status] ?? "";
   return <span className={`badge ${tone}`}>{status}</span>;
 }
 

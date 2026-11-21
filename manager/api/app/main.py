@@ -1,9 +1,11 @@
 """Manager API: ``uvicorn app.main:app``.
 
 The hub of a master/slave architecture: modules (YOLO, CLIP, VLM...) are
-independent services with their own API and web page; the manager knows where
-they are, checks their health, forwards the web interface's calls to them
-(``/api/modules/<name>/...``) and orchestrates them in pipelines.
+independent web services with their own API and web page. The manager knows
+where they are, launches and stops them (``/api/manage/<name>/start|stop``,
+or automatically when they are needed), checks their health, forwards the web
+interface's calls to them (``/api/modules/<name>/...``) and orchestrates them
+in pipelines.
 """
 
 from __future__ import annotations
@@ -11,7 +13,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -23,8 +24,10 @@ from fastapi.responses import FileResponse, StreamingResponse
 from starlette.background import BackgroundTask
 
 from app import pipeline, pose
-from app.config import Settings, get_settings, parse_modules
+from app.config import Settings, get_settings
 from app.imaging import InvalidImageError, decode_image
+from app.launchers import LaunchError
+from app.registry import Registry, load_registry
 from app.storage import Store
 
 logger = logging.getLogger("manager")
@@ -36,7 +39,7 @@ HOP_BY_HOP = {
 LAYERS = [
     {"id": 1, "name": "User interface", "items": ["React web app (manager)", "Standalone module pages"],
      "status": "implemented"},
-    {"id": 2, "name": "API & application", "items": ["FastAPI manager hub", "Module registry & health",
+    {"id": 2, "name": "API & application", "items": ["FastAPI manager hub", "Module registry, launching & health",
      "Reverse proxy", "Job orchestration (per module)"], "status": "implemented"},
     {"id": 3, "name": "Image processing", "items": ["Upload of pictures and picture sequences", "EXIF orientation",
      "Resizing per model", "Person crops"], "status": "implemented (no video yet)"},
@@ -51,18 +54,40 @@ LAYERS = [
 ]  # fmt: skip
 
 
-def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTransport | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    transport: httpx.AsyncBaseTransport | None = None,
+    docker_transport: httpx.AsyncBaseTransport | None = None,
+) -> FastAPI:
     settings = settings or get_settings()
-    modules = parse_modules(settings.modules)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.client = httpx.AsyncClient(
             transport=transport, timeout=httpx.Timeout(settings.proxy_timeout, connect=5.0)
         )
-        app.state.store = Store(Path(settings.data_dir))
+        docker = None
+        if docker_transport is not None or settings.docker_socket:
+            docker = httpx.AsyncClient(
+                transport=docker_transport or httpx.AsyncHTTPTransport(uds=settings.docker_socket),
+                base_url="http://docker",
+                timeout=30.0,
+            )
+        data = Path(settings.data_dir)
+        app.state.registry = Registry(
+            load_registry(
+                settings.registry, settings.modules, docker, settings.compose_project, Path.cwd(), data / "logs"
+            ),
+            app.state.client,
+            settings.health_timeout,
+        )
+        app.state.store = Store(data)
+        idle = asyncio.create_task(app.state.registry.idle_loop())
         yield
+        idle.cancel()
         await app.state.client.aclose()
+        if docker is not None:
+            await docker.aclose()
 
     app = FastAPI(title="MultiVision AI Manager", version="0.1.0", lifespan=lifespan)
 
@@ -70,36 +95,66 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
     def health() -> dict:
         return {"status": "ok"}
 
-    async def status(name: str, url: str) -> dict:
-        client: httpx.AsyncClient = app.state.client
-        start = time.perf_counter()
+    def registry() -> Registry:
+        return app.state.registry
+
+    def module(name: str):
         try:
-            r = await client.get(f"{url}/v1/info", timeout=settings.health_timeout)
-            r.raise_for_status()
-            info = r.json()
-            state = "online"
-            error = None
-        except (httpx.HTTPError, ValueError) as exc:
-            info, state, error = {}, "offline", f"{type(exc).__name__}: {exc}"
-        return {
-            "name": name,
-            "url": url,
-            "status": state,
-            "latency_ms": round((time.perf_counter() - start) * 1000, 1),
-            "info": info,
-            "error": error,
-            "ui": f"/api/modules/{name}{info.get('ui', '/ui/')}" if state == "online" else None,
-        }
+            return registry().get(name)
+        except KeyError:
+            raise HTTPException(404, f"unknown module {name!r}") from None
 
     @app.get("/api/modules", tags=["modules"])
     async def list_modules() -> list[dict]:
-        return list(await asyncio.gather(*(status(n, u) for n, u in modules.items())))
+        reg = registry()
+        return list(await asyncio.gather(*(reg.status(m) for m in reg.modules.values())))
 
     @app.get("/api/modules/{name}", tags=["modules"])
     async def get_module(name: str) -> dict:
-        if name not in modules:
-            raise HTTPException(404, f"unknown module {name!r}")
-        return await status(name, modules[name])
+        return await registry().status(module(name))
+
+    # --- launching modules -----------------------------------------------------
+    @app.post("/api/manage/{name}/start", tags=["manage"])
+    async def start_module(name: str, wait: bool = False) -> dict:
+        """Launch a module's web service. ``wait=true`` returns once it answers."""
+        m = module(name)
+        try:
+            if wait:
+                await registry().start(m, wait=True)
+            else:
+                await registry().start(m, wait=False)
+                asyncio.create_task(_wait_started(m))
+        except LaunchError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return await registry().status(m)
+
+    async def _wait_started(m) -> None:
+        try:
+            await registry().start(m, wait=True)
+        except LaunchError:
+            pass  # kept in m.last_error, shown by the status
+
+    @app.post("/api/manage/{name}/stop", tags=["manage"])
+    async def stop_module(name: str) -> dict:
+        m = module(name)
+        try:
+            await registry().stop(m)
+        except LaunchError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return await registry().status(m)
+
+    @app.post("/api/manage/{name}/restart", tags=["manage"])
+    async def restart_module(name: str) -> dict:
+        await stop_module(name)
+        return await start_module(name)
+
+    @app.get("/api/manage/{name}/logs", tags=["manage"])
+    async def module_logs(name: str, tail: int = 200) -> dict:
+        m = module(name)
+        try:
+            return {"logs": await m.launcher.logs(tail)}
+        except (LaunchError, httpx.HTTPError) as exc:
+            raise HTTPException(409, str(exc)) from exc
 
     @app.api_route(
         "/api/modules/{name}/{path:path}",
@@ -107,10 +162,12 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
         tags=["modules"],
     )
     async def proxy(name: str, path: str, request: Request) -> Response:
-        """Forward a call to a module (streams both ways)."""
-        if name not in modules:
-            raise HTTPException(404, f"unknown module {name!r}")
-        base = modules[name]
+        """Forward a call to a module (streams both ways), launching it first if needed."""
+        m = module(name)
+        problem = await registry().ensure(name)
+        if problem:
+            raise HTTPException(503, f"module {name!r}: {problem}")
+        base = m.url
         client: httpx.AsyncClient = app.state.client
         headers = {k: v for k, v in request.headers.items() if k.lower() not in HOP_BY_HOP}
         req = client.build_request(
@@ -160,7 +217,14 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
             opts = json.loads(options) if options else {}
         except json.JSONDecodeError as exc:
             raise HTTPException(422, f"options must be JSON: {exc}") from exc
-        result = await pipeline.run(app.state.client, modules, uploads, opts)
+        # Launch the modules this run needs (if they are not up yet).
+        wanted = [n for n in ("yolo", "clip", "vlm") if (opts.get(n) or {}).get("enabled", True)]
+        problems = await asyncio.gather(*(registry().ensure(n) for n in wanted))
+        ready = {n: registry().get(n).url for n, p in zip(wanted, problems, strict=True) if p is None}
+        errors = [
+            {"module": n, "error": p} for n, p in zip(wanted, problems, strict=True) if p and p != "not registered"
+        ]
+        result = await pipeline.run(app.state.client, ready, uploads, opts, errors)
         if save:
             result["id"] = app.state.store.save(result, [u[2] for u in uploads], title)
         return result
@@ -199,7 +263,7 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
 
     @app.get("/api/architecture", tags=["knowledge"])
     def architecture() -> dict:
-        return {"layers": LAYERS, "modules": modules}
+        return {"layers": LAYERS, "modules": {n: m.url for n, m in registry().modules.items()}}
 
     return app
 

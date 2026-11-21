@@ -149,11 +149,14 @@ async def run(
     modules: dict[str, str],
     uploads: list[tuple[str, bytes, Image.Image]],
     options: dict | None = None,
+    errors: list[dict] | None = None,
 ) -> dict:
+    """``modules``: name -> URL of the modules that are up; ``errors``: problems so far
+    (e.g. a module that could not be launched)."""
     opts = merge_options(options)
     started = time.perf_counter()
     timings: dict[str, float] = {}
-    errors: list[dict] = []
+    errors = list(errors or [])
     frames = [{"index": i, "file": name, "width": im.width, "height": im.height}
               for i, (name, _, im) in enumerate(uploads)]  # fmt: skip
 

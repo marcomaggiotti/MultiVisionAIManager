@@ -1,9 +1,13 @@
 # MultiVision AI Manager: the manager (web + API hub) and its modules.
 #
-#   ./start.sh                             # clones modules/yolo if needed, then starts (GPU)
-#   ./start.sh --cpu                       # same, CPU only
-#   docker compose up --build              # NVIDIA GPU (needs the NVIDIA Container Toolkit)
-#   docker compose -f docker-compose.yml -f docker-compose.cpu.yml up --build   # CPU only
+# Every module is a separate web service in its own container. The manager launches
+# and stops them (dashboard buttons, or automatically when a pipeline or the web
+# interface needs one) through the Docker socket; modules.json says how.
+#
+#   ./start.sh          clones modules/yolo if needed, builds everything, starts the
+#                       manager and creates the module containers (NVIDIA GPU)
+#   ./start.sh --cpu    same, CPU only
+#   ./start.sh down     stops and removes everything
 #
 # Web interface: http://localhost:3000
 # Each module also serves its own page and API docs, e.g. http://localhost:8001/ui/ and /docs.
@@ -28,8 +32,16 @@ services:
   manager-api:
     build: ./manager/api
     environment:
-      MANAGER_MODULES: yolo=http://yolo:8000,clip=http://clip:8000,vlm=http://vlm:8000
-    volumes: [manager-data:/data]
+      MANAGER_REGISTRY: /config/modules.json
+      MANAGER_DOCKER_SOCKET: /var/run/docker.sock
+      MANAGER_COMPOSE_PROJECT: multivision
+    volumes:
+      - manager-data:/data
+      - ./modules.json:/config/modules.json:ro
+      # Lets the manager start/stop the module containers. Docker access is
+      # root-equivalent: keep the manager API on localhost (as below).
+      - /var/run/docker.sock:/var/run/docker.sock
+    group_add: ["${DOCKER_GID:-0}"] # group owning the Docker socket (start.sh sets it)
     ports: ["127.0.0.1:${MANAGER_PORT:-8080}:8080"]
     restart: unless-stopped
 
@@ -37,6 +49,7 @@ services:
   # cloned into modules/yolo as a git submodule (./start.sh clones it automatically).
   yolo:
     <<: *gpu
+    profiles: [modules] # created by start.sh, launched by the manager
     build:
       context: ./modules/yolo
       args:
@@ -49,20 +62,20 @@ services:
     volumes: [yolo-data:/data]
     shm_size: 2gb # training data loaders
     ports: ["127.0.0.1:${YOLO_PORT:-8001}:8000"]
-    restart: unless-stopped
 
   clip:
     <<: *gpu
+    profiles: [modules] # created by start.sh, launched by the manager
     build: ./modules/clip
     environment:
       CLIP_MODEL_ID: ${CLIP_MODEL_ID:-openai/clip-vit-base-patch16}
       CLIP_DEVICE: ${CLIP_DEVICE:-}
     volumes: [clip-data:/data, hf-cache:/hf]
     ports: ["127.0.0.1:${CLIP_PORT:-8002}:8000"]
-    restart: unless-stopped
 
   vlm:
     <<: *gpu
+    profiles: [modules] # created by start.sh, launched by the manager
     build: ./modules/vlm
     environment:
       VLM_MODEL_ID: ${VLM_MODEL_ID:-HuggingFaceTB/SmolVLM-256M-Instruct}
@@ -71,7 +84,6 @@ services:
       HF_TOKEN: ${HF_TOKEN:-}
     volumes: [vlm-data:/data, hf-cache:/hf]
     ports: ["127.0.0.1:${VLM_PORT:-8003}:8000"]
-    restart: unless-stopped
 
 volumes:
   manager-data:

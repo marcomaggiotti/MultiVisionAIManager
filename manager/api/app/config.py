@@ -9,8 +9,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="MANAGER_", env_file=".env", extra="ignore")
 
-    # name=url pairs, comma separated. Each module serves /health and /v1/info.
+    # Module registry (JSON, see app/registry.py): where each module's web service is
+    # and how the manager launches it. Without it, MANAGER_MODULES lists name=url pairs
+    # of services the manager only talks to.
+    registry: str | None = None
     modules: str = "yolo=http://localhost:8001,clip=http://localhost:8002,vlm=http://localhost:8003"
+    # Docker Engine socket, for modules with a "docker" launcher.
+    docker_socket: str | None = None
+    compose_project: str = "multivision"
     data_dir: str = "data"
     # Seconds to wait for a proxied call (model loading and generation can be slow).
     proxy_timeout: float = Field(900.0, gt=0)
@@ -22,12 +28,3 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
-
-
-def parse_modules(spec: str) -> dict[str, str]:
-    modules = {}
-    for part in spec.split(","):
-        if "=" in part:
-            name, url = part.split("=", 1)
-            modules[name.strip()] = url.strip().rstrip("/")
-    return modules
