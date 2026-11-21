@@ -226,3 +226,4 @@ __marimo__/
 node_modules/
 data/
 *.sqlite3
+*.tsbuildinfo
