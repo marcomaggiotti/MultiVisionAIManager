@@ -1,13 +1,13 @@
 # MultiVision AI Manager: the manager (web + API hub) and its modules.
 #
-# Every module is a separate web service in its own container. The manager launches
-# and stops them (dashboard buttons, or automatically when a pipeline or the web
-# interface needs one) through the Docker socket; modules.json says how.
+# Every module is a separate web service in its own container. "docker compose up"
+# creates and starts them all; afterwards the manager stops and relaunches them
+# (dashboard buttons, automatically when a pipeline or the web interface needs one,
+# idle stop to free GPU memory) through the Docker socket; modules.json says how.
 #
-#   ./start.sh          clones modules/yolo if needed, builds everything, starts the
-#                       manager and creates the module containers (NVIDIA GPU)
-#   ./start.sh --cpu    same, CPU only
-#   ./start.sh down     stops and removes everything
+#   git submodule update --init      # once: clones the YOLO module into modules/yolo
+#   docker compose up -d --build     # or ./start.sh (does both), ./start.sh --cpu
+#   ./start.sh down                  # stops and removes everything
 #
 # Web interface: http://localhost:3000
 # Each module also serves its own page and API docs, e.g. http://localhost:8001/ui/ and /docs.
@@ -25,7 +25,12 @@ x-gpu: &gpu
 services:
   web:
     build: ./manager/web
-    ports: ["${WEB_PORT:-3000}:80"]
+    # Reachable from the whole local network: http on 3000, https on 3443 (phones and
+    # tablets need https to use their camera in the Live studio).
+    ports: ["${WEB_PORT:-3000}:80", "${WEB_HTTPS_PORT:-3443}:443"]
+    environment:
+      CERT_HOSTS: ${CERT_HOSTS:-}
+    volumes: [web-certs:/etc/nginx/certs]
     depends_on: [manager-api]
     restart: unless-stopped
 
@@ -49,7 +54,6 @@ services:
   # cloned into modules/yolo as a git submodule (./start.sh clones it automatically).
   yolo:
     <<: *gpu
-    profiles: [modules] # created by start.sh, launched by the manager
     build:
       context: ./modules/yolo
       args:
@@ -65,7 +69,6 @@ services:
 
   clip:
     <<: *gpu
-    profiles: [modules] # created by start.sh, launched by the manager
     build: ./modules/clip
     environment:
       CLIP_MODEL_ID: ${CLIP_MODEL_ID:-openai/clip-vit-base-patch16}
@@ -75,7 +78,6 @@ services:
 
   vlm:
     <<: *gpu
-    profiles: [modules] # created by start.sh, launched by the manager
     build: ./modules/vlm
     environment:
       VLM_MODEL_ID: ${VLM_MODEL_ID:-HuggingFaceTB/SmolVLM-256M-Instruct}
@@ -86,6 +88,7 @@ services:
     ports: ["127.0.0.1:${VLM_PORT:-8003}:8000"]
 
 volumes:
+  web-certs:
   manager-data:
   yolo-data:
   clip-data:

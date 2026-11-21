@@ -83,8 +83,8 @@ class DockerLauncher(Launcher):
         c = await self._container()
         if c is None:
             raise LaunchError(
-                f"no container for service {self.service!r}: create it with "
-                f"'docker compose create {self.service}' (start.sh does it)"
+                f"the {self.service!r} container does not exist: run 'docker compose up -d --build' "
+                f"(after 'git submodule update --init' for the YOLO module)"
             )
         return c["Id"]
 

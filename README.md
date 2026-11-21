@@ -169,20 +169,29 @@ Requirements: Docker with Compose v2.24+. For the GPU: an NVIDIA driver and the
 [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/).
 
 ```bash
-git clone https://github.com/marcomaggiotti/MultiVisionAIManager
+git clone --recursive https://github.com/marcomaggiotti/MultiVisionAIManager
 cd MultiVisionAIManager
-./start.sh            # or: ./start.sh --cpu        (./start.sh down to stop everything)
+docker compose up -d --build        # or ./start.sh (also clones modules/yolo) · ./start.sh --cpu
 ```
 
-`start.sh` starts the manager (web + API), and builds and creates the three module
-containers without running them: the manager launches each module when it is first
-needed, or when you press **Start** on the dashboard.
+`docker compose up` builds and starts the manager and the three modules. From then on the
+manager stops and relaunches each module (dashboard buttons, automatically when it is
+needed, idle stop for the VLM). The YOLO module is the
+[detect_image_engine](https://github.com/marcomaggiotti/detect_image_engine) repository,
+included as a git submodule in `modules/yolo` (`--recursive` clones it; otherwise run
+`git submodule update --init` once, or use `./start.sh`, which does it).
 
-The YOLO module is the [detect_image_engine](https://github.com/marcomaggiotti/detect_image_engine)
-repository, included as a git submodule in `modules/yolo`. `start.sh` clones it there
-automatically when it is missing (or clone everything at once with
-`git clone --recursive ...`). `./start.sh --update` pulls its latest commits.
-Without the script: `git submodule update --init` then `docker compose up --build`.
+### From a phone or tablet on the same network
+
+- Open **https://&lt;this computer's IP&gt;:3443** (find the IP with `ipconfig` on Windows,
+  `ip addr` / `ifconfig` on Linux and macOS).
+- The certificate is self-signed, so the browser warns once: choose *Advanced → Proceed*.
+  HTTPS is needed because phones only allow camera access on secure pages; plain
+  `http://<ip>:3000` works too, but without the camera.
+- If the page does not open, allow ports 3000 and 3443 in the computer's firewall (Windows:
+  *Windows Defender Firewall → Inbound rules*, or accept the prompt Docker Desktop shows).
+- Optional: put the computer's IP in `.env` as `CERT_HOSTS=192.168.1.20` before the first
+  start, to write it into the certificate.
 
 Open http://localhost:3000. Once launched, the modules are also reachable directly:
 YOLO http://localhost:8001/ui/, CLIP http://localhost:8002/ui/, VLM http://localhost:8003/ui/

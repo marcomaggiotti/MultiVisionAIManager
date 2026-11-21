@@ -5,9 +5,8 @@
 #   ./start.sh --update also pull the latest commits of the YOLO module repository
 #   ./start.sh down     stop and remove the manager and the modules
 #
-# The manager (web + API) is started. Each module (YOLO, CLIP, VLM) is a separate
-# web service: its container is built and created here, and the manager launches it
-# when it is needed or when you press Start on the dashboard.
+# Starts the manager (web + API) and the modules (YOLO, CLIP, VLM: separate web
+# services). The manager can then stop and relaunch each module.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -25,7 +24,7 @@ done
 compose() { docker compose "${files[@]}" "$@"; }
 
 if [ "$action" = down ]; then
-  compose --profile modules down
+  compose down
   exit 0
 fi
 
@@ -46,11 +45,8 @@ if [ -S /var/run/docker.sock ]; then
   export DOCKER_GID
 fi
 
-echo "Building and creating the module containers (yolo, clip, vlm)..."
-compose --profile modules build
-compose --profile modules create yolo clip vlm
-echo "Starting the manager..."
-compose up -d --build web manager-api
+echo "Building and starting the manager and the modules..."
+compose up -d --build
 echo
 echo "MultiVision AI Manager: http://localhost:${WEB_PORT:-3000}"
-echo "Modules are launched by the manager when needed (or from the dashboard)."
+echo "Phones/tablets on the same network: https://<this computer's IP>:${WEB_HTTPS_PORT:-3443}"

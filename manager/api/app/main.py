@@ -104,6 +104,16 @@ def create_app(
 
     app = FastAPI(title="MultiVision AI Manager", version="0.1.0", lifespan=lifespan)
 
+    @app.get("/", include_in_schema=False)
+    def root() -> dict:
+        """The API has no page of its own: the web interface is served by the "web" service."""
+        return {
+            "service": "MultiVision AI Manager API",
+            "web_interface": "http://localhost:3000",
+            "api_docs": "/docs",
+            "modules": "/api/modules",
+        }
+
     @app.get("/health", tags=["ops"])
     def health() -> dict:
         return {"status": "ok"}
