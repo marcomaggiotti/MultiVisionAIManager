@@ -1,0 +1,44 @@
+{
+  "modules": [
+    {
+      "name": "yolo",
+      "title": "YOLO detection & pose",
+      "url": "http://127.0.0.1:8001",
+      "repository": "https://github.com/marcomaggiotti/detect_image_engine",
+      "launcher": {
+        "type": "process",
+        "cwd": "modules/yolo",
+        "command": ["uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8001"],
+        "env": { "DETECT_MODEL_WEIGHTS": "yolo11n-pose.pt", "DETECT_TARGET_CLASSES": "person", "DETECT_DATA_DIR": "../../data/yolo" }
+      },
+      "start_timeout": 300
+    },
+    {
+      "name": "clip",
+      "title": "CLIP image-text embeddings",
+      "url": "http://127.0.0.1:8002",
+      "repository": "modules/clip",
+      "launcher": {
+        "type": "process",
+        "cwd": "modules/clip",
+        "command": ["uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8002"],
+        "env": { "CLIP_DATA_DIR": "../../data/clip" }
+      },
+      "start_timeout": 600
+    },
+    {
+      "name": "vlm",
+      "title": "Vision-language models",
+      "url": "http://127.0.0.1:8003",
+      "repository": "modules/vlm",
+      "launcher": {
+        "type": "process",
+        "cwd": "modules/vlm",
+        "command": ["uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8003"],
+        "env": { "VLM_DATA_DIR": "../../data/vlm" }
+      },
+      "idle_stop_minutes": 30,
+      "start_timeout": 900
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+# CPU-only override (no NVIDIA GPU):
+#   docker compose -f docker-compose.yml -f docker-compose.cpu.yml up --build
+# Works for trying things out; training and the VLM are much slower on CPU.
+services:
+  yolo:
+    deploy: !reset {}
+    build:
+      args:
+        TORCH_INDEX: https://download.pytorch.org/whl/cpu
+    environment:
+      DETECT_DEVICE: cpu
+
+  clip:
+    deploy: !reset {}
+    build:
+      args:
+        BASE: python:3.12-slim
+        TORCH_INDEX: https://download.pytorch.org/whl/cpu
+    environment:
+      CLIP_DEVICE: cpu
+
+  vlm:
+    deploy: !reset {}
+    build:
+      args:
+        BASE: python:3.12-slim
+        TORCH_INDEX: https://download.pytorch.org/whl/cpu
+    environment:
+      VLM_DEVICE: cpu
+      VLM_DTYPE: float32

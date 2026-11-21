@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CLIP Module</title>
+<style>
+  :root { --bg:#f7f7f5; --fg:#1d1d1b; --muted:#6b6b66; --card:#fff; --line:#e3e3de; --accent:#5b4bb7; --bar:#c9c2f0; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#161615; --fg:#ecebe6; --muted:#a3a29b; --card:#212120; --line:#34342f; --accent:#a99cf2; --bar:#4b4380; } }
+  * { box-sizing:border-box } body { margin:0; font:14px/1.5 system-ui,sans-serif; background:var(--bg); color:var(--fg) }
+  main { max-width:1000px; margin:0 auto; padding:16px } h1 { font-size:20px; margin:4px 0 } .muted { color:var(--muted) }
+  .grid { display:grid; grid-template-columns: 340px 1fr; gap:16px } @media (max-width:800px){ .grid{grid-template-columns:1fr} }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px }
+  label { display:block; margin:10px 0 4px; font-weight:600 } textarea, input[type=number] { width:100%; padding:6px; border:1px solid var(--line); border-radius:6px; background:transparent; color:inherit; font:inherit }
+  button { background:var(--accent); color:#fff; border:0; border-radius:6px; padding:8px 14px; cursor:pointer; margin-top:12px }
+  img { max-width:100%; border-radius:8px } .row { display:grid; grid-template-columns: 140px 1fr 56px; gap:8px; align-items:center; margin:3px 0 }
+  .bar { height:12px; background:var(--bar); border-radius:3px } a { color:var(--accent) }
+</style>
+</head>
+<body>
+<main>
+  <h1>CLIP module · zero-shot classification</h1>
+  <p class="muted" id="model">Loading…</p>
+  <p class="muted">Standalone page of this module. The MultiVision AI Manager adds similarity matrices, retrieval, embedding maps and fine-tuning · <a href="../docs">API docs</a></p>
+  <div class="grid">
+    <div class="card">
+      <label>Image</label><input type="file" id="file" accept="image/*">
+      <label>Labels (one per line)</label><textarea id="labels" rows="8"></textarea>
+      <label>Prompt templates</label><textarea id="templates" rows="4"></textarea>
+      <label>Temperature (empty = learned)</label><input type="number" id="temp" step="0.005" min="0.001">
+      <button id="run">Classify</button>
+    </div>
+    <div class="card"><img id="preview" alt=""><div id="out"></div></div>
+  </div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+async function init() {
+  const p = await (await fetch("../v1/presets")).json();
+  $("labels").value = p.ballet_steps.join("\n"); $("templates").value = p.templates.slice(0, 3).join("\n");
+  const r = await fetch("../v1/model");
+  if (r.ok) { const m = await r.json(); $("model").textContent = `${m.model_id} · ${m.family} · ${m.embed_dim}-d · temperature ${m.temperature}`; }
+  else $("model").textContent = "No model loaded";
+}
+$("file").onchange = () => { const f = $("file").files[0]; if (f) $("preview").src = URL.createObjectURL(f); };
+$("run").onclick = async () => {
+  const f = $("file").files[0]; if (!f) return alert("Choose an image first");
+  const fd = new FormData(); fd.append("images", f); fd.append("labels", $("labels").value); fd.append("templates", $("templates").value);
+  if ($("temp").value) fd.append("temperature", $("temp").value);
+  const res = await fetch("../v1/zero-shot", { method: "POST", body: fd }); const body = await res.json();
+  if (!res.ok) { $("out").textContent = body.detail; return; }
+  const r = body.results[0];
+  $("out").innerHTML = `<p>Template agreement: <b>${Math.round(r.sensitivity.agreement * 100)}%</b></p>` + r.ranking.slice(0, 10).map(x =>
+    `<div class="row"><span>${x.label}</span><div class="bar" style="width:${Math.max(1, x.probability * 100)}%"></div><span>${(x.probability * 100).toFixed(1)}%</span></div>`).join("");
+};
+init();
+</script>
+</body>
+</html>
