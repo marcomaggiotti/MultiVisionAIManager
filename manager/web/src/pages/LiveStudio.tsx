@@ -151,13 +151,21 @@ export default function LiveStudio() {
         <div className="glass toolbar">
           <div className="seg">
             {(["camera", "video", "pictures"] as Source[]).map((s) => (
-              <button key={s} className={source === s ? "on" : ""} disabled={isLive} onClick={() => { setSource(s); setFiles([]); if (s !== "camera") setTimeout(() => fileInput.current?.click(), 0); }}>
+              <button key={s} className={source === s ? "on" : ""} disabled={isLive} onClick={() => {
+                if (s !== source) { setSource(s); setFiles([]); if (fileInput.current) fileInput.current.value = ""; }
+                if (s !== "camera") setTimeout(() => fileInput.current?.click(), 0);
+              }}>
                 {{ camera: "◉ Camera", video: "▶ Video file", pictures: "▦ Pictures" }[s]}
               </button>
             ))}
           </div>
-          <input ref={fileInput} type="file" hidden multiple={source === "pictures"} accept={source === "video" ? "video/*" : "image/*"} onChange={(e) => setFiles(Array.from(e.target.files ?? []))} />
-          {source !== "camera" && <span className="small muted">{files.length ? `${files.length} file(s)` : "no file"}</span>}
+          <input ref={fileInput} type="file" hidden multiple={source === "pictures"} accept={source === "video" ? "video/*" : "image/*"} onChange={(e) => { setFiles(Array.from(e.target.files ?? [])); live.setError(null); }} />
+          {source !== "camera" && (
+            <button className="small ghost" disabled={isLive} onClick={() => fileInput.current?.click()} title={files.map((f) => f.name).join("\n")}
+              style={{ maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {files.length === 0 ? (source === "video" ? "Choose a video…" : "Choose pictures…") : files.length === 1 ? files[0].name : `${files.length} pictures`}
+            </button>
+          )}
           <div className="seg">
             {[["skeleton", "Skeleton"], ["box", "Box"], ["angles", "Angles"]].map(([o, label]) => (
               <button key={o} className={overlays.has(o) ? "on" : ""} onClick={() => toggleOverlay(o)}>{label}</button>

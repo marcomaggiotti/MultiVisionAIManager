@@ -78,11 +78,21 @@ export function useLive() {
 
   const loop = async () => {
     let last = performance.now();
+    let failures = 0;
     while (running.current) {
       const t0 = performance.now();
       const blob = await grab();
-      if (!blob) break;
+      if (!blob) {
+        if (media.current.video && frames.current.length === 0) setError("The video ended before any frame could be analysed.");
+        break;
+      }
       const result = await send(blob);
+      if (!result) {
+        // The error is already shown: stop instead of silently skipping the whole video.
+        if (++failures >= 3) break;
+        continue;
+      }
+      failures = 0;
       if (result) {
         frames.current.push({ result, blob });
         if (frames.current.length > MAX_FRAMES) frames.current.shift();
@@ -116,7 +126,11 @@ export function useLive() {
         if (!files?.length) throw new Error("choose a video file");
         const video = document.createElement("video");
         video.src = URL.createObjectURL(files[0]); video.muted = true; video.playsInline = true;
-        await video.play();
+        try {
+          await video.play();
+        } catch {
+          throw new Error(`The browser cannot play ${files[0].name} (try an MP4 with H.264 video)`);
+        }
         media.current = { video, index: 0 };
       } else {
         if (!files?.length) throw new Error("choose pictures");

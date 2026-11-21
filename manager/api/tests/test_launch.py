@@ -89,7 +89,7 @@ def test_status_start_stop_and_logs(docker_setup):
     stopped = client.post("/api/manage/yolo/stop").json()
     assert stopped["status"] == "offline" and fake.running["yolo"] is False
     missing = client.post("/api/manage/vlm/start?wait=true")
-    assert missing.status_code == 409 and "docker compose create vlm" in missing.json()["detail"]
+    assert missing.status_code == 409 and "docker compose up" in missing.json()["detail"]
 
 
 def test_module_is_launched_when_it_is_needed(docker_setup):
