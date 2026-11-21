@@ -370,6 +370,22 @@ def create_app(
         except LookupError as exc:
             raise HTTPException(404, "session not found") from exc
 
+    @app.patch("/api/live/sessions/{session_id}", tags=["live"])
+    def rename_session(session_id: str, body: Annotated[dict, Body()]) -> dict:
+        try:
+            app.state.store.rename_session(session_id, str(body.get("title") or ""))
+        except LookupError as exc:
+            raise HTTPException(404, "session not found") from exc
+        return {"id": session_id, "title": body.get("title")}
+
+    @app.delete("/api/live/sessions/{session_id}", status_code=204, tags=["live"])
+    def delete_session(session_id: str) -> Response:
+        try:
+            app.state.store.delete_session(session_id)
+        except LookupError as exc:
+            raise HTTPException(404, "session not found") from exc
+        return Response(status_code=204)
+
     @app.get("/api/architecture", tags=["knowledge"])
     def architecture() -> dict:
         return {"layers": LAYERS, "modules": {n: m.url for n, m in registry().modules.items()}}

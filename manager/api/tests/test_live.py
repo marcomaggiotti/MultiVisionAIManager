@@ -106,3 +106,8 @@ def test_http_frame_and_saved_sessions(make_client):
         assert listing[0]["id"] == saved["id"] and listing[0]["counts"] == {"plié": 3}
         assert client.get(f"/api/live/sessions/{saved['id']}").json()["title"] == "barre"
         assert "arabesque" in client.get("/api/ballet/vocabulary").json()["poses"]
+        assert client.patch(f"/api/live/sessions/{saved['id']}", json={"title": "barre 2"}).status_code == 200
+        assert client.get("/api/live/sessions").json()[0]["title"] == "barre 2"
+        assert client.delete(f"/api/live/sessions/{saved['id']}").status_code == 204
+        assert client.get("/api/live/sessions").json() == []
+        assert client.delete(f"/api/live/sessions/{saved['id']}").status_code == 404

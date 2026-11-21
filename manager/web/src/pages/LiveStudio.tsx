@@ -73,7 +73,7 @@ export default function LiveStudio() {
         counts, events: live.events, comments: live.comments, series,
       };
       const r = await api("/api/live/sessions", json("POST", body));
-      live.addComment({ t: frame?.result.t ?? 0, pose: null, status: "ok", message: `Session saved (${r.id})`, kind: "coach" });
+      live.addComment({ t: frame?.result.t ?? 0, pose: null, status: "ok", message: `Session saved (${r.id}): open it in the Sessions tab`, kind: "coach" });
     } catch (e) { live.setError(e instanceof Error ? e.message : String(e)); }
     setBusy(null);
   };

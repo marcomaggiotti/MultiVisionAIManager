@@ -42,6 +42,11 @@ persist are written to the feedback log, with the time, so you can jump back to 
 - **AI coach** sends the shown frame through the full pipeline (CLIP + VLM) for a
   teacher-style comment. **Save** stores the session (counts, events, comments, angle
   series) in the manager.
+- **Sessions** tab: every saved session (search by title or pose), with poses performed and
+  time held, the most frequent corrections, the held-pose timeline, angle and motion charts
+  and the feedback log; rename, download as JSON or delete. Sessions are stored in the
+  manager's SQLite database (`manager.sqlite3` in the `manager-data` volume); API:
+  `GET/PATCH/DELETE /api/live/sessions[/<id>]`.
 - Angles are measured in the picture (2-D): film from the side for arabesque, attitude
   and jumps, from the front for positions and plié.
 

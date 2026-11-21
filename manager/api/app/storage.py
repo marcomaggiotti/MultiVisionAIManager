@@ -94,6 +94,16 @@ class Store:
             raise LookupError(session_id)
         return {**json.loads(row[0]), "title": row[1], "created": row[2]}
 
+    def rename_session(self, session_id: str, title: str) -> None:
+        with self._conn() as c:
+            if not c.execute("UPDATE live_sessions SET title = ? WHERE id = ?", (title, session_id)).rowcount:
+                raise LookupError(session_id)
+
+    def delete_session(self, session_id: str) -> None:
+        with self._conn() as c:
+            if not c.execute("DELETE FROM live_sessions WHERE id = ?", (session_id,)).rowcount:
+                raise LookupError(session_id)
+
     def delete(self, analysis_id: str) -> None:
         import shutil
 
