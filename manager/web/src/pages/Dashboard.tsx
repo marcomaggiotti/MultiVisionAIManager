@@ -13,7 +13,7 @@ export default function Dashboard() {
   const modules = useLoad(() => api<Module[]>("/api/modules"), [], 4000);
   const arch = useLoad(() => api<{ layers: any[] }>("/api/architecture"), []);
   return (
-    <Page title="Dashboard" subtitle="Every module is a separate web service with its own API and page. The manager launches and stops them, starts them automatically when they are needed, and orchestrates them.">
+    <Page title="Modules" subtitle="Every module is a separate web service with its own API and page. The manager launches and stops them, starts them automatically when they are needed, and orchestrates them.">
       <ErrorBox error={modules.error} />
       <div className="grid g3">
         {(modules.data ?? []).map((m) => <ModuleCard key={m.name} m={m} onChange={modules.reload} />)}

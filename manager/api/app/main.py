@@ -19,11 +19,22 @@ from pathlib import Path
 from typing import Annotated
 
 import httpx
-from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile
+from fastapi import (
+    Body,
+    FastAPI,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.responses import FileResponse, StreamingResponse
 from starlette.background import BackgroundTask
 
-from app import pipeline, pose
+from app import ballet, live, pipeline, pose
 from app.config import Settings, get_settings
 from app.imaging import InvalidImageError, decode_image
 from app.launchers import LaunchError
@@ -37,7 +48,8 @@ HOP_BY_HOP = {
 }  # fmt: skip
 
 LAYERS = [
-    {"id": 1, "name": "User interface", "items": ["React web app (manager)", "Standalone module pages"],
+    {"id": 1, "name": "User interface", "items": ["Live studio (camera, video, pictures)", "Module studios",
+     "Standalone module pages"],
      "status": "implemented"},
     {"id": 2, "name": "API & application", "items": ["FastAPI manager hub", "Module registry, launching & health",
      "Reverse proxy", "Job orchestration (per module)"], "status": "implemented"},
@@ -45,7 +57,8 @@ LAYERS = [
      "Resizing per model", "Person crops"], "status": "implemented (no video yet)"},
     {"id": 4, "name": "AI perception", "items": ["YOLO detection & pose", "CLIP embeddings", "VLM understanding"],
      "status": "implemented"},
-    {"id": 5, "name": "Context & reasoning", "items": ["Joint angles & ballet cues", "Motion across a sequence",
+    {"id": 5, "name": "Context & reasoning", "items": ["Real-time pose recognition & body-part feedback",
+     "Joint angles & ballet cues", "Motion across a sequence",
      "Context-grounded VLM prompt", "Evidence fusion"], "status": "first version"},
     {"id": 6, "name": "Output & knowledge", "items": ["Structured results", "Analysis history"],
      "status": "first version"},
@@ -253,13 +266,99 @@ def create_app(
             raise HTTPException(404, "frame not found") from exc
 
     @app.get("/api/ballet", tags=["knowledge"])
-    def ballet() -> dict:
+    def ballet_knowledge() -> dict:
         return {
             "steps": pipeline.STEPS,
             "keypoints": pose.KEYPOINTS,
             "skeleton": pose.SKELETON,
             "pipeline_defaults": pipeline.DEFAULTS,
         }
+
+    @app.get("/api/ballet/vocabulary", tags=["knowledge"])
+    def ballet_vocabulary() -> dict:
+        return ballet.vocabulary()
+
+    # --- real time ------------------------------------------------------------------
+    app.state.live = {}
+
+    @app.websocket("/api/live/ws")
+    async def live_ws(ws: WebSocket) -> None:
+        """Real-time session. Send JPEG frames as binary messages; each gets one JSON
+        answer. Text messages: {"type": "config", "smoothing", "hold", "confidence",
+        "detection_confidence"} and {"type": "summary"}."""
+        await ws.accept()
+        session = live.LiveSession()
+        app.state.live[session.id] = session
+        detection_conf = 0.3
+        await ws.send_json({"type": "hello", "session": session.id})
+        problem = await registry().ensure("yolo")
+        if problem:
+            await ws.send_json({"type": "error", "message": f"YOLO module: {problem}"})
+        try:
+            while True:
+                message = await ws.receive()
+                if message.get("type") == "websocket.disconnect":
+                    break
+                if message.get("bytes") is not None:
+                    try:
+                        if (err := await registry().ensure("yolo")) is not None:
+                            raise RuntimeError(f"YOLO module: {err}")
+                        result = await live.process_frame(
+                            app.state.client, registry().get("yolo").url, session, message["bytes"], detection_conf
+                        )
+                        await ws.send_json({"type": "frame", **result})
+                    except (httpx.HTTPError, RuntimeError, ValueError) as exc:
+                        await ws.send_json({"type": "error", "message": pipeline._msg(exc)})
+                    continue
+                data = json.loads(message.get("text") or "{}")
+                if data.get("type") == "config":
+                    session.configure(**data)
+                    detection_conf = float(data.get("detection_confidence") or detection_conf)
+                    settings = {
+                        "smoothing": session.smoothing,
+                        "hold": session.hold,
+                        "confidence": session.confidence,
+                        "detection_confidence": detection_conf,
+                    }
+                    await ws.send_json({"type": "config", **settings})
+                elif data.get("type") == "summary":
+                    await ws.send_json({"type": "summary", **session.summary()})
+        except WebSocketDisconnect:
+            pass
+        finally:
+            app.state.live.pop(session.id, None)
+
+    @app.post("/api/live/frame", tags=["live"])
+    async def live_frame(image: Annotated[UploadFile, File()], session_id: str | None = None) -> dict:
+        """HTTP version of the live endpoint (one frame per call)."""
+        session = app.state.live.get(session_id) if session_id else None
+        if session is None:
+            session = live.LiveSession()
+            app.state.live[session.id] = session
+        problem = await registry().ensure("yolo")
+        if problem:
+            raise HTTPException(503, f"YOLO module: {problem}")
+        try:
+            result = await live.process_frame(app.state.client, registry().get("yolo").url, session, await image.read())
+        except httpx.HTTPError as exc:
+            raise HTTPException(502, pipeline._msg(exc)) from exc
+        return {"session": session.id, **result}
+
+    @app.post("/api/live/sessions", tags=["live"])
+    def save_session(body: Annotated[dict, Body()]) -> dict:
+        """Save a session recorded by the studio (summary, events, comments, series)."""
+        return {"id": app.state.store.save_session(body, body.get("title"))}
+
+    @app.get("/api/live/sessions", tags=["live"])
+    def list_sessions(limit: int = 50) -> list[dict]:
+        return app.state.store.sessions(limit)
+
+    @app.get("/api/live/sessions/{session_id}", tags=["live"])
+    def get_session(session_id: str) -> dict:
+        try:
+            return app.state.store.session(session_id)
+        except LookupError as exc:
+            raise HTTPException(404, "session not found") from exc
 
     @app.get("/api/architecture", tags=["knowledge"])
     def architecture() -> dict:

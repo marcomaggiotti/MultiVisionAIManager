@@ -7,6 +7,44 @@ or the web interface needs one), checks their health, forwards the web interface
 to them and **triggers** them in pipelines. The first use case is **movement in sport**, starting
 with **classical ballet**, on **single pictures or sequences of pictures** (no video yet).
 
+![Live studio](docs/live-studio.png)
+
+## Live studio: real-time ballet feedback
+
+The home page of the web interface. Start the **camera** (or a **video file**, or a
+**sequence of pictures**): every frame goes to YOLO pose through the manager, and within
+milliseconds the studio shows:
+
+| Panel | What it shows |
+| --- | --- |
+| **A · Camera** | The analysed picture with the skeleton, each limb coloured by its correction (optional box, knee angles, mirror view) |
+| **B · Body-part feedback** | The dancer's own skeleton as a map: green = good, amber = adjust, red = correct, with the key angles |
+| **C · Skeletal tracking** | The 17 tracked joints, named, on a perspective floor |
+| **D · Pose recognition** | The ballet pose being held and for how long, this frame's candidates, the pose's description and targets, and every correction with its target |
+| **Timeline** | Held poses, motion energy, leg elevation and knee angles over the session; click or replay to review any moment |
+| **Left** | Session, the ballet vocabulary with how many times each pose was performed, body-part status |
+| **Right** | Detected poses (count and time held), properties (frame rate, thresholds, frames to hold a pose, smoothing, resolution), the feedback log |
+
+**Recognised poses** (rules on joint angles, `manager/api/app/ballet.py`): arabesque,
+attitude, développé, grand battement, passé, grand jeté, plié (demi / grand), second
+position, first / fifth position. When none fits, the studio says so (a transition).
+
+**Feedback per body part**, against the pose's targets: working and supporting knee
+straight (≥ 170°), working-leg height (90° arabesque, 110° grand battement), attitude
+knee 90-130°, split ≥ 160° in grand jeté, even knees in plié, torso vertical, back lifted
+in arabesque, shoulders and hips level, the whole body in the picture. Corrections that
+persist are written to the feedback log, with the time, so you can jump back to them.
+
+- Keypoints are smoothed and a pose must hold for a few frames before it is recognised and
+  counted (both adjustable), so the feedback does not flicker.
+- Frames go over a WebSocket (`/api/live/ws`); the next one leaves when the previous answer
+  arrives, so the frame rate follows the GPU (15+ fps with YOLO11n-pose).
+- **AI coach** sends the shown frame through the full pipeline (CLIP + VLM) for a
+  teacher-style comment. **Save** stores the session (counts, events, comments, angle
+  series) in the manager.
+- Angles are measured in the picture (2-D): film from the side for arabesque, attitude
+  and jumps, from the front for positions and plié.
+
 ```mermaid
 flowchart TB
   UI["01 · Web interface (React)<br/>localhost:3000"] --> API
@@ -22,11 +60,11 @@ flowchart TB
 
 | Layer (from the design) | Implemented as |
 | --- | --- |
-| 01 User interface | `manager/web` (React + Vite), plus a standalone page in every module (`/ui/`) |
+| 01 User interface | `manager/web` (React + Vite): live studio, analysis, module studios; plus a standalone page in every module (`/ui/`) |
 | 02 API & application | `manager/api` (FastAPI): module registry, health, reverse proxy, pipeline, history |
 | 03 Image processing | Upload of one picture or an ordered sequence, EXIF orientation, per-model resizing, dancer crops |
 | 04 AI perception | YOLO (detection + 17-keypoint pose), CLIP, VLM modules |
-| 05 Context & reasoning | `manager/api/app/pose.py` + `pipeline.py`: joint angles, ballet pose cues, motion across frames, a VLM prompt grounded in those measurements, evidence fusion |
+| 05 Context & reasoning | `manager/api/app/ballet.py` + `live.py` (real-time recognition and feedback), `pose.py` + `pipeline.py`: joint angles, ballet pose cues, motion across frames, a VLM prompt grounded in those measurements, evidence fusion |
 | 06 Output & knowledge | Structured results, analysis history with the pictures |
 | 07 Data & infrastructure | Docker Compose, a volume per module, shared Hugging Face cache, SQLite (PostgreSQL / vector DB later) |
 
@@ -183,7 +221,7 @@ docker-compose.yml          GPU stack            docker-compose.cpu.yml   CPU ov
 modules.json                module registry (Docker)   modules.local.json   same, local processes
 start.sh                    clone the YOLO module, build, create the modules, start the manager
 manager/api/                hub: main.py (routes, proxy), registry.py + launchers.py (launching), pipeline.py, pose.py
-manager/web/                React app: pages/ (Dashboard, Analyze, YoloStudio, ClipStudio, VlmStudio)
+manager/web/                React app: pages/LiveStudio + live/ (panels, timeline, session hook), Analyze, Dashboard (modules), studios
 modules/clip/               CLIP module: engine.py, analysis.py, gallery.py, training.py, static/ (own page)
 modules/vlm/                VLM module: engine.py, training.py (LoRA, evaluation), metrics.py, static/
 modules/yolo/               YOLO module = detect_image_engine (git submodule)
@@ -191,8 +229,8 @@ modules/yolo/               YOLO module = detect_image_engine (git submodule)
 
 ## Next steps
 
-- Video: frame sampling and a frame scheduler in the image-processing layer, tracking
-  between frames.
+- Video on the server side (today the browser samples video and camera frames and sends
+  pictures); multi-dancer tracking; 3-D pose (depth or two cameras) for true angles.
 - Knowledge layer: PostgreSQL for results, a vector database for CLIP embeddings, RAG
   over a ballet syllabus for the reasoning layer.
 - Authentication and job queues (Redis) when more than one person uses it.

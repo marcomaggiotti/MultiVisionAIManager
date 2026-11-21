@@ -21,6 +21,10 @@ class Store:
                 "CREATE TABLE IF NOT EXISTS analyses ("
                 "id TEXT PRIMARY KEY, created REAL, title TEXT, frames INTEGER, top TEXT, result TEXT)"
             )
+            c.execute(
+                "CREATE TABLE IF NOT EXISTS live_sessions ("
+                "id TEXT PRIMARY KEY, created REAL, title TEXT, duration REAL, frames INTEGER, data TEXT)"
+            )
 
     def _conn(self) -> sqlite3.Connection:
         return sqlite3.connect(self.db)
@@ -60,6 +64,35 @@ class Store:
         if not path.exists():
             raise LookupError(f"{analysis_id}/{index}")
         return path
+
+    def save_session(self, data: dict, title: str | None = None) -> str:
+        session_id = data.get("id") or (time.strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:4])
+        with self._conn() as c:
+            c.execute(
+                "INSERT OR REPLACE INTO live_sessions VALUES (?, ?, ?, ?, ?, ?)",
+                (session_id, time.time(), title or "", data.get("duration_s") or 0, data.get("frames") or 0,
+                 json.dumps(data)),
+            )  # fmt: skip
+        return session_id
+
+    def sessions(self, limit: int = 50) -> list[dict]:
+        with self._conn() as c:
+            rows = c.execute(
+                "SELECT id, created, title, duration, frames, data FROM live_sessions ORDER BY created DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [
+            {"id": r[0], "created": r[1], "title": r[2], "duration_s": r[3], "frames": r[4],
+             "counts": json.loads(r[5]).get("counts", {})}
+            for r in rows
+        ]  # fmt: skip
+
+    def session(self, session_id: str) -> dict:
+        with self._conn() as c:
+            row = c.execute("SELECT data, title, created FROM live_sessions WHERE id = ?", (session_id,)).fetchone()
+        if not row:
+            raise LookupError(session_id)
+        return {**json.loads(row[0]), "title": row[1], "created": row[2]}
 
     def delete(self, analysis_id: str) -> None:
         import shutil
