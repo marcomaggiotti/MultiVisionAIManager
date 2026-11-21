@@ -1,0 +1,10 @@
+# HTTPS on port 443 (other devices: https://<this computer's IP>:3443). Browsers only
+# give a page access to the camera over HTTPS (or on localhost), so phones and tablets
+# use this one. The certificate is self-signed (see 10-certificate.sh).
+server {
+    listen 443 ssl;
+    server_name _;
+    ssl_certificate /etc/nginx/certs/multivision.crt;
+    ssl_certificate_key /etc/nginx/certs/multivision.key;
+    include /etc/nginx/multivision/locations.conf;
+}
