@@ -1,0 +1,4 @@
+[submodule "modules/yolo"]
+	path = modules/yolo
+	url = https://github.com/marcomaggiotti/detect_image_engine
+	branch = claude/serene-dirac-srols1

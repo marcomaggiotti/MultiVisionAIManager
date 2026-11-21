@@ -1,5 +1,7 @@
 # MultiVision AI Manager: the manager (web + API hub) and its modules.
 #
+#   ./start.sh                             # clones modules/yolo if needed, then starts (GPU)
+#   ./start.sh --cpu                       # same, CPU only
 #   docker compose up --build              # NVIDIA GPU (needs the NVIDIA Container Toolkit)
 #   docker compose -f docker-compose.yml -f docker-compose.cpu.yml up --build   # CPU only
 #
@@ -31,13 +33,12 @@ services:
     ports: ["127.0.0.1:${MANAGER_PORT:-8080}:8080"]
     restart: unless-stopped
 
-  # YOLO detection & pose: https://github.com/marcomaggiotti/detect_image_engine
-  # Built straight from its Git repository: nothing to clone. To build from a local
-  # checkout while developing it, set YOLO_MODULE_SOURCE=../detect_image_engine in .env.
+  # YOLO detection & pose: https://github.com/marcomaggiotti/detect_image_engine,
+  # cloned into modules/yolo as a git submodule (./start.sh clones it automatically).
   yolo:
     <<: *gpu
     build:
-      context: ${YOLO_MODULE_SOURCE:-https://github.com/marcomaggiotti/detect_image_engine.git#claude/serene-dirac-srols1}
+      context: ./modules/yolo
       args:
         TORCH_INDEX: ${YOLO_TORCH_INDEX:-https://download.pytorch.org/whl/cu124}
     environment:
