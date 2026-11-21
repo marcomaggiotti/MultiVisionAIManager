@@ -32,11 +32,12 @@ services:
     restart: unless-stopped
 
   # YOLO detection & pose: https://github.com/marcomaggiotti/detect_image_engine
-  # cloned next to this repository (or set YOLO_MODULE_PATH).
+  # Built straight from its Git repository: nothing to clone. To build from a local
+  # checkout while developing it, set YOLO_MODULE_SOURCE=../detect_image_engine in .env.
   yolo:
     <<: *gpu
     build:
-      context: ${YOLO_MODULE_PATH:-../detect_image_engine}
+      context: ${YOLO_MODULE_SOURCE:-https://github.com/marcomaggiotti/detect_image_engine.git#claude/serene-dirac-srols1}
       args:
         TORCH_INDEX: ${YOLO_TORCH_INDEX:-https://download.pytorch.org/whl/cu124}
     environment:

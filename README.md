@@ -38,7 +38,8 @@ implementing those and listing it in `MANAGER_MODULES`.
 ### YOLO: detection & pose
 
 Lives in its own repository, [detect_image_engine](https://github.com/marcomaggiotti/detect_image_engine)
-(the lab is on branch `claude/serene-dirac-srols1` until it is merged).
+(the lab is on branch `claude/serene-dirac-srols1` until it is merged; after merging, change the
+`#claude/serene-dirac-srols1` suffix of the YOLO build context in `docker-compose.yml` to `#main`).
 
 | Topic | Where to customise it in the UI (YOLO page) |
 | --- | --- |
@@ -101,11 +102,16 @@ Requirements: Docker with Compose v2.24+. For the GPU: an NVIDIA driver and the
 
 ```bash
 git clone https://github.com/marcomaggiotti/MultiVisionAIManager
-git clone -b claude/serene-dirac-srols1 https://github.com/marcomaggiotti/detect_image_engine
 cd MultiVisionAIManager
 cp .env.example .env
 docker compose up --build
 ```
+
+The YOLO module is fetched automatically: Compose builds it straight from the
+[detect_image_engine](https://github.com/marcomaggiotti/detect_image_engine) Git
+repository, so there is nothing else to clone. `docker compose build --pull yolo` picks
+up its latest commits. To work on the YOLO module itself, check it out anywhere and set
+`YOLO_MODULE_SOURCE=../detect_image_engine` (its path) in `.env`.
 
 Open http://localhost:3000. The modules are also reachable directly:
 YOLO http://localhost:8001/ui/, CLIP http://localhost:8002/ui/, VLM http://localhost:8003/ui/
@@ -126,6 +132,7 @@ the VLM (*VLM → Models → Unload*) before long YOLO or CLIP training on small
 
 ```bash
 # modules (each in its own terminal)
+git clone -b claude/serene-dirac-srols1 https://github.com/marcomaggiotti/detect_image_engine ../detect_image_engine
 cd ../detect_image_engine && pip install -e ".[ultralytics,dev]" && \
   DETECT_MODEL_WEIGHTS=yolo11n-pose.pt DETECT_TARGET_CLASSES=person uvicorn app.main:app --port 8001
 cd modules/clip && pip install -e ".[dev]" && uvicorn app.main:app --port 8002
@@ -147,7 +154,7 @@ manager/api/                hub: app/main.py (registry, proxy, routes), pipeline
 manager/web/                React app: pages/ (Dashboard, Analyze, YoloStudio, ClipStudio, VlmStudio)
 modules/clip/               CLIP module: engine.py, analysis.py, gallery.py, training.py, static/ (own page)
 modules/vlm/                VLM module: engine.py, training.py (LoRA, evaluation), metrics.py, static/
-../detect_image_engine/     YOLO module (separate repository)
+detect_image_engine         YOLO module: separate repository, built from its Git URL
 ```
 
 ## Next steps
