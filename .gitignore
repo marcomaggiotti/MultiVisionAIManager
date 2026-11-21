@@ -221,3 +221,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# MultiVision AI Manager
+node_modules/
+data/
+*.sqlite3

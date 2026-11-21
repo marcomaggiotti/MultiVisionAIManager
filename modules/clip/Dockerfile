@@ -4,7 +4,7 @@ ARG BASE=pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime
 FROM ${BASE}
 
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 \
-    HF_HOME=/data/hf CLIP_DATA_DIR=/data PORT=8000
+    HF_HOME=/hf CLIP_DATA_DIR=/data PORT=8000
 
 ARG TORCH_INDEX=""
 RUN if [ -n "$TORCH_INDEX" ]; then pip install torch --index-url "$TORCH_INDEX"; fi
@@ -14,7 +14,8 @@ COPY pyproject.toml ./
 COPY app ./app
 RUN pip install .
 
-RUN useradd --system --create-home app && mkdir -p /data && chown app /data
+# Fixed uid so that the shared Hugging Face cache volume (/hf) is writable by every module.
+RUN useradd --system --uid 10001 --create-home app && mkdir -p /data /hf && chown app /data /hf
 USER app
 VOLUME /data
 EXPOSE 8000

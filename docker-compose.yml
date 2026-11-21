@@ -1,0 +1,79 @@
+# MultiVision AI Manager: the manager (web + API hub) and its modules.
+#
+#   docker compose up --build              # NVIDIA GPU (needs the NVIDIA Container Toolkit)
+#   docker compose -f docker-compose.yml -f docker-compose.cpu.yml up --build   # CPU only
+#
+# Web interface: http://localhost:3000
+# Each module also serves its own page and API docs, e.g. http://localhost:8001/ui/ and /docs.
+name: multivision
+
+x-gpu: &gpu
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: all
+            capabilities: [gpu]
+
+services:
+  web:
+    build: ./manager/web
+    ports: ["${WEB_PORT:-3000}:80"]
+    depends_on: [manager-api]
+    restart: unless-stopped
+
+  manager-api:
+    build: ./manager/api
+    environment:
+      MANAGER_MODULES: yolo=http://yolo:8000,clip=http://clip:8000,vlm=http://vlm:8000
+    volumes: [manager-data:/data]
+    ports: ["127.0.0.1:${MANAGER_PORT:-8080}:8080"]
+    restart: unless-stopped
+
+  # YOLO detection & pose: https://github.com/marcomaggiotti/detect_image_engine
+  # cloned next to this repository (or set YOLO_MODULE_PATH).
+  yolo:
+    <<: *gpu
+    build:
+      context: ${YOLO_MODULE_PATH:-../detect_image_engine}
+      args:
+        TORCH_INDEX: ${YOLO_TORCH_INDEX:-https://download.pytorch.org/whl/cu124}
+    environment:
+      DETECT_MODEL_WEIGHTS: ${YOLO_WEIGHTS:-/models/yolo11n-pose.pt}
+      DETECT_TARGET_CLASSES: person
+      DETECT_DEVICE: ${YOLO_DEVICE:-cuda}
+      DETECT_DATA_DIR: /data
+    volumes: [yolo-data:/data]
+    shm_size: 2gb # training data loaders
+    ports: ["127.0.0.1:${YOLO_PORT:-8001}:8000"]
+    restart: unless-stopped
+
+  clip:
+    <<: *gpu
+    build: ./modules/clip
+    environment:
+      CLIP_MODEL_ID: ${CLIP_MODEL_ID:-openai/clip-vit-base-patch16}
+      CLIP_DEVICE: ${CLIP_DEVICE:-}
+    volumes: [clip-data:/data, hf-cache:/hf]
+    ports: ["127.0.0.1:${CLIP_PORT:-8002}:8000"]
+    restart: unless-stopped
+
+  vlm:
+    <<: *gpu
+    build: ./modules/vlm
+    environment:
+      VLM_MODEL_ID: ${VLM_MODEL_ID:-HuggingFaceTB/SmolVLM-256M-Instruct}
+      VLM_QUANTIZATION: ${VLM_QUANTIZATION:-none}
+      VLM_DEVICE: ${VLM_DEVICE:-}
+      HF_TOKEN: ${HF_TOKEN:-}
+    volumes: [vlm-data:/data, hf-cache:/hf]
+    ports: ["127.0.0.1:${VLM_PORT:-8003}:8000"]
+    restart: unless-stopped
+
+volumes:
+  manager-data:
+  yolo-data:
+  clip-data:
+  vlm-data:
+  hf-cache:

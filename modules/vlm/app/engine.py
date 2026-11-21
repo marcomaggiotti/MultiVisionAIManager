@@ -359,13 +359,18 @@ class HFVLM(VLMEngine):
         for start, length in runs:
             values = img_heat[offset : offset + length]
             offset += length
-            top = max(values) if values else 1.0
+            # Min-max scaled within the block, so that the contrast shows where
+            # attention concentrates (uniform attention stays a flat mid tone).
+            lo, hi = (min(values), max(values)) if values else (0.0, 0.0)
+            spread = hi - lo
+            heat_values = [round((v - lo) / spread, 4) if spread > 1e-9 else 0.5 for v in values]
             blocks.append(
                 {
                     "start": start,
                     "length": length,
                     "grid": grid_for(length, hint),
-                    "heat": [round(v / top, 4) if top else 0 for v in values],
+                    "raw_sum": round(sum(values), 5),
+                    "heat": heat_values,
                 }
             )
         text_scores = [(i, float(heat[i])) for i in range(n_prompt) if not bool(mask[i])]
