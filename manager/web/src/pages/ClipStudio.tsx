@@ -4,6 +4,8 @@ import { useAction, useLoad, useObjectUrls } from "../hooks";
 import { Bars, Card, Check, ErrorBox, Field, Files, Json, KV, Page, Slider, Status, Tabs, Thumbs } from "../components/ui";
 import { Heatmap, LineChart, Scatter } from "../components/charts";
 import { JobList } from "../components/Jobs";
+import { SnapshotNotice } from "../components/SnapshotNotice";
+import { Snapshot, useIncomingSnapshot } from "../live/snapshot";
 
 const C = (p: string) => mod("clip", p);
 type Tab = "model" | "zeroshot" | "similarity" | "tokens" | "retrieval" | "space" | "finetune";
@@ -61,6 +63,8 @@ function Model() {
 
 function ZeroShot({ presets }: { presets: any }) {
   const [files, setFiles] = useState<File[]>([]);
+  const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  useIncomingSnapshot("clip", (received) => { setSnapshot(received); setFiles([received.file]); });
   const urls = useObjectUrls(files);
   const [labels, setLabels] = useState("");
   const [templates, setTemplates] = useState("");
@@ -75,7 +79,8 @@ function ZeroShot({ presets }: { presets: any }) {
   return (
     <div className="grid side">
       <Card title="Zero-shot classification">
-        <Files onChange={setFiles} />
+        <SnapshotNotice snapshot={snapshot} />
+        <Files onChange={(picked) => { setSnapshot(null); setFiles(picked); }} />
         <Thumbs urls={urls} selected={sel} onSelect={setSel} />
         <Field label="Labels (one per line)">
           <div className="row" style={{ marginBottom: 4 }}>

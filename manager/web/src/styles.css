@@ -85,8 +85,8 @@ details > summary { cursor: pointer; font-weight: 600; margin: 6px 0; }
 .track { display: grid; grid-template-columns: 130px 1fr; align-items: center; border-bottom: 1px solid var(--line); }
 .track > span { padding: 0 14px; font-size: 13px; color: var(--muted); }
 .track canvas { width: 100%; height: 54px; display: block; cursor: pointer; }
-.player { display: flex; align-items: center; gap: 14px; padding: 10px 14px; }
-.player input[type=range] { flex: 1; }
+.player { display: flex; align-items: center; gap: 12px; padding: 10px 14px; flex-wrap: wrap; }
+.player input[type=range] { flex: 1; min-width: 160px; }
 .play { width: 40px; height: 36px; border-radius: 9px; padding: 0; display: grid; place-items: center; font-size: 15px; }
 .labelrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; margin-bottom: 6px; border-radius: 8px; background: rgba(8, 12, 22, .55); border: 1px solid var(--line); border-left: 4px solid var(--c, var(--accent)); font-size: 14px; }
 .tree { font-size: 14px; } .tree .fam { display: flex; justify-content: space-between; padding: 6px 4px; cursor: pointer; } .tree .leaf { display: flex; justify-content: space-between; padding: 4px 4px 4px 22px; color: var(--muted); }
@@ -99,3 +99,13 @@ details > summary { cursor: pointer; font-weight: 600; margin: 6px 0; }
 @keyframes pulse { 50% { opacity: .35; } }
 @media (max-width: 1300px) { .studio { grid-template-columns: 220px minmax(0, 1fr); } .studio .right { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 900px) { .studio { grid-template-columns: 1fr; } .studio .right { grid-template-columns: 1fr; } .panels { grid-template-columns: 1fr; } }
+
+/* ---- dialogs ---- */
+.modal-backdrop { position: fixed; inset: 0; z-index: 50; background: rgba(2, 4, 10, .65); display: grid; place-items: center; padding: 16px; }
+.modal { width: min(1000px, 100%); max-height: calc(100vh - 32px); overflow: auto; }
+
+/* ---- player ---- */
+.player .controls { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+.player .controls button { padding: 5px 8px; min-width: 34px; font-size: 12px; }
+.player .controls .play { min-width: 40px; font-size: 15px; }
+.player select { width: auto; padding: 4px 6px; font-size: 12px; }

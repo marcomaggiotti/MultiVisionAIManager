@@ -7,6 +7,8 @@ import { Annotator, NBox } from "../components/Annotator";
 import { Group, OptionsForm } from "../components/OptionsForm";
 import { JobList } from "../components/Jobs";
 import { LineChart } from "../components/charts";
+import { SnapshotNotice } from "../components/SnapshotNotice";
+import { Snapshot, useIncomingSnapshot } from "../live/snapshot";
 
 const Y = (p: string) => mod("yolo", p);
 type Tab = "inference" | "models" | "datasets" | "training" | "robustness" | "latency";
@@ -30,6 +32,8 @@ function Inference() {
   const runtime = useLoad(() => api(Y("/v1/lab/runtime")), []);
   const model = useLoad(() => api(Y("/v1/model")), []);
   const [files, setFiles] = useState<File[]>([]);
+  const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  useIncomingSnapshot("yolo", (received) => { setSnapshot(received); setFiles([received.file]); });
   const urls = useObjectUrls(files);
   const [classes, setClasses] = useState("person");
   const [conf, setConf] = useState(0.25);
@@ -51,7 +55,8 @@ function Inference() {
     <div className="grid side">
       <Card title="Settings">
         <p className="small muted mono">{model.data?.weights} · task {model.data?.task}</p>
-        <Files multiple={false} label="Picture" onChange={setFiles} />
+        <SnapshotNotice snapshot={snapshot} />
+        <Files multiple={false} label="Picture" onChange={(picked) => { setSnapshot(null); setFiles(picked); }} />
         <Field label="Classes" help={`Comma separated, * = all. The model knows ${labels.length} classes.`}>
           <input type="text" list="yolo-labels" value={classes} onChange={(e) => setClasses(e.target.value)} />
           <datalist id="yolo-labels">{labels.map((l) => <option key={l} value={l} />)}</datalist>

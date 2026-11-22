@@ -42,6 +42,16 @@ persist are written to the feedback log, with the time, so you can jump back to 
 - **AI coach** sends the shown frame through the full pipeline (CLIP + VLM) for a
   teacher-style comment. **Save** stores the session (counts, events, comments, angle
   series) in the manager.
+- **Player** under the timeline: play / pause, first / last frame, one frame back or
+  forward, −3/−2/−1 s and +1/+2/+3 s, replay speed ×0.25 to ×2. While the camera or a video
+  runs, Pause freezes the capture (a video file pauses too) so the moment can be inspected.
+  Keyboard: `Space` play/pause · `←`/`→` 1 s (`Shift` 3 s) · `,`/`.` one frame ·
+  `Home`/`End` · `S` snapshot.
+- **Snapshot** (📷 or `S`) of the shown frame, with or without the pose overlay: download,
+  share (phone share sheet, or copy to the clipboard), open it in **YOLO · detect**,
+  **CLIP · zero-shot** or **VLM · ask** (the question is pre-filled with the recognised
+  movement and the corrections of that moment), or add the clean picture to a **YOLO
+  dataset** (to annotate and train) or a **CLIP gallery** labelled with the movement.
 - **Sessions** tab: every saved session (search by title or pose), with poses performed and
   time held, the most frequent corrections, the held-pose timeline, angle and motion charts
   and the feedback log; rename, download as JSON or delete. Sessions are stored in the

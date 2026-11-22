@@ -19,6 +19,8 @@ export function useLive() {
   const [session, setSession] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
   const [fps, setFps] = useState(0);
+  const [capturePaused, setCapturePaused] = useState(false);
+  const capturePausedRef = useRef(false);
   const frames = useRef<Recorded[]>([]);
   const events = useRef<PoseEvent[]>([]);
   const comments = useRef<Comment[]>([]);
@@ -80,6 +82,10 @@ export function useLive() {
     let last = performance.now();
     let failures = 0;
     while (running.current) {
+      if (capturePausedRef.current) {
+        await sleep(100);
+        continue;
+      }
       const t0 = performance.now();
       const blob = await grab();
       if (!blob) {
@@ -150,6 +156,8 @@ export function useLive() {
 
   const stop = async () => {
     running.current = false;
+    capturePausedRef.current = false;
+    setCapturePaused(false);
     const m = media.current;
     m.stream?.getTracks().forEach((t) => t.stop());
     if (m.video) { m.video.pause(); if (m.video.src.startsWith("blob:")) URL.revokeObjectURL(m.video.src); }
@@ -157,6 +165,19 @@ export function useLive() {
     if (ws.current && ws.current.readyState <= WebSocket.OPEN) ws.current.close();
     ws.current = null;
     setStatus((s) => (s === "live" || s === "connecting" ? "ended" : s));
+  };
+
+  /** Freeze the capture (a video file pauses too); frames already analysed stay. */
+  const pauseCapture = () => {
+    capturePausedRef.current = true;
+    setCapturePaused(true);
+    media.current.video?.pause();
+  };
+
+  const resumeCapture = () => {
+    capturePausedRef.current = false;
+    setCapturePaused(false);
+    if (media.current.video && !media.current.stream) void media.current.video.play();
   };
 
   const reset = () => { frames.current = []; events.current = []; comments.current = []; bump(); };
@@ -168,5 +189,6 @@ export function useLive() {
     status, error, setError, session, version, fps,
     frames: frames.current, events: events.current, comments: comments.current,
     start, stop, reset, configure, addComment, settings: settings.current,
+    capturePaused, pauseCapture, resumeCapture,
   };
 }

@@ -70,13 +70,36 @@ function Track({ kind, frames, index, onSeek, vocab, version }: {
   );
 }
 
-export function Timeline({ frames, index, onSeek, vocab, version, playing, onPlay, live, onLive }: {
-  frames: Recorded[]; index: number; onSeek: (i: number) => void; vocab: Vocabulary | null; version: number;
-  playing: boolean; onPlay: () => void; live: boolean; onLive: () => void;
+export const PLAYBACK_SPEEDS = [0.25, 0.5, 1, 1.5, 2];
+export const SECOND_STEPS = [1, 2, 3];
+
+/** Index of the recorded frame closest to ``seconds`` (frames are in time order). */
+export function frameIndexAtTime(frames: Recorded[], seconds: number): number {
+  if (!frames.length) return -1;
+  let best = 0;
+  frames.forEach((frame, index) => {
+    if (Math.abs(frame.result.t - seconds) < Math.abs(frames[best].result.t - seconds)) best = index;
+  });
+  return best;
+}
+
+export type PlayerState = {
+  playing: boolean; // replaying the recording, or capturing live
+  speed: number;
+  following: boolean; // showing the newest frame as it arrives
+};
+
+export type PlayerActions = {
+  onTogglePlay: () => void;
+  onSeek: (index: number) => void;
+  onSpeed: (speed: number) => void;
+  onFollow: () => void;
+  onSnapshot: () => void;
+};
+
+export function Timeline({ frames, index, vocab, version, player, actions }: {
+  frames: Recorded[]; index: number; vocab: Vocabulary | null; version: number; player: PlayerState; actions: PlayerActions;
 }) {
-  const n = frames.length;
-  const t = n ? frames[Math.max(0, index)]?.result.t ?? 0 : 0;
-  const total = n ? frames[n - 1].result.t : 0;
   const rows: [TrackKind, string, string?][] = [
     ["poses", "Poses"],
     ["motion", "Motion energy"],
@@ -88,16 +111,54 @@ export function Timeline({ frames, index, onSeek, vocab, version, playing, onPla
       {rows.map(([kind, label, hint]) => (
         <div className="track" key={kind}>
           <span title={hint}>{label}{hint && <div className="small" style={{ fontSize: 10 }}>{hint}</div>}</span>
-          <Track kind={kind} frames={frames} index={index} onSeek={onSeek} vocab={vocab} version={version} />
+          <Track kind={kind} frames={frames} index={index} onSeek={actions.onSeek} vocab={vocab} version={version} />
         </div>
       ))}
-      <div className="player">
-        <button className="play ghost" onClick={onPlay} disabled={live || n < 2} title="Replay the recorded frames">{playing ? "❚❚" : "▶"}</button>
-        <span className="mono">{fmtTime(t)} / {fmtTime(total)}</span>
-        <input type="range" min={0} max={Math.max(0, n - 1)} value={Math.max(0, index)} onChange={(e) => onSeek(Number(e.target.value))} disabled={!n} />
-        <span className="mono small muted">{n} frames</span>
-        <button className={`small ${live ? "" : "ghost"}`} onClick={onLive} title="Follow the newest frame">{live ? "● following" : "Go live"}</button>
+      <PlayerControls frames={frames} index={index} player={player} actions={actions} />
+    </div>
+  );
+}
+
+/** Play / pause, jumps by frame and by 1-3 seconds, speed, snapshot.
+ * Keyboard: Space play/pause · ←/→ 1 s (Shift: 3 s) · , . one frame · Home/End · S snapshot. */
+function PlayerControls({ frames, index, player, actions }: { frames: Recorded[]; index: number; player: PlayerState; actions: PlayerActions }) {
+  const frameCount = frames.length;
+  const currentTime = frameCount ? frames[Math.max(0, index)]?.result.t ?? 0 : 0;
+  const totalTime = frameCount ? frames[frameCount - 1].result.t : 0;
+  const hasFrames = frameCount > 0;
+  const seekSeconds = (delta: number) => actions.onSeek(frameIndexAtTime(frames, currentTime + delta));
+  const stepFrames = (delta: number) => actions.onSeek(Math.max(0, Math.min(frameCount - 1, index + delta)));
+
+  return (
+    <div className="player">
+      <div className="controls">
+        <button className="ghost" title="First frame (Home)" disabled={!hasFrames} onClick={() => actions.onSeek(0)}>⏮</button>
+        {[...SECOND_STEPS].reverse().map((seconds) => (
+          <button key={-seconds} className="ghost" title={`Back ${seconds} s${seconds === 1 ? " (←)" : seconds === 3 ? " (Shift ←)" : ""}`}
+            disabled={!hasFrames} onClick={() => seekSeconds(-seconds)}>−{seconds}s</button>
+        ))}
+        <button className="ghost" title="Previous frame (,)" disabled={!hasFrames} onClick={() => stepFrames(-1)}>◀|</button>
+        <button className="play" title="Play / pause (Space)" onClick={actions.onTogglePlay} disabled={!hasFrames && !player.playing}>
+          {player.playing ? "❚❚" : "▶"}
+        </button>
+        <button className="ghost" title="Next frame (.)" disabled={!hasFrames} onClick={() => stepFrames(1)}>|▶</button>
+        {SECOND_STEPS.map((seconds) => (
+          <button key={seconds} className="ghost" title={`Forward ${seconds} s${seconds === 1 ? " (→)" : seconds === 3 ? " (Shift →)" : ""}`}
+            disabled={!hasFrames} onClick={() => seekSeconds(seconds)}>+{seconds}s</button>
+        ))}
+        <button className="ghost" title="Last frame (End)" disabled={!hasFrames} onClick={() => actions.onSeek(frameCount - 1)}>⏭</button>
+        <select value={player.speed} onChange={(event) => actions.onSpeed(Number(event.target.value))} title="Replay speed">
+          {PLAYBACK_SPEEDS.map((speed) => <option key={speed} value={speed}>×{speed}</option>)}
+        </select>
       </div>
+      <span className="mono">{fmtTime(currentTime)} / {fmtTime(totalTime)}</span>
+      <input type="range" min={0} max={Math.max(0, frameCount - 1)} value={Math.max(0, index)}
+        onChange={(event) => actions.onSeek(Number(event.target.value))} disabled={!hasFrames} aria-label="Position" />
+      <span className="mono small muted">{frameCount} frames</span>
+      <button className="small" title="Snapshot of the shown frame (S)" disabled={!hasFrames} onClick={actions.onSnapshot}>📷 Snapshot</button>
+      <button className={`small ${player.following ? "" : "ghost"}`} onClick={actions.onFollow} title="Follow the newest frame">
+        {player.following ? "● following" : "Go live"}
+      </button>
     </div>
   );
 }
