@@ -81,6 +81,38 @@ persist are written to the feedback log, with the time, so you can jump back to 
 - Angles are measured in the picture (2-D): film from the side for arabesque, attitude
   and jumps, from the front for positions and plié.
 
+## Compare: dance along with a reference video
+
+The **Compare** tab puts a reference video (the teacher, or any dancer to copy) next to
+the camera filming the student, and compares the two in real time.
+
+- **Both dancers are tracked at once**: every tick, the reference video's picture and the
+  camera's picture go to the manager in one WebSocket message (`/api/compare/ws`), YOLO
+  pose finds the 17 body landmarks of each (the two requests run in parallel), and each
+  side gets its own keypoint smoothing.
+- **Joint angles are compared**: knees, elbows, leg and arm elevation, torso tilt and leg
+  spread. A joint is **green** within 15° of the reference, **yellow** within 30°, **red**
+  beyond (both adjustable). The skeleton over each video is drawn in those colours, body
+  part by body part, with a correction for each wrong part ("Lift the right leg higher (you
+  70°, reference 95°)") and a table of every angle.
+- **Live match score**: each joint scores 100 % within the green band, falling to 0 at
+  twice the yellow one; the match is their weighted mean (legs count most), smoothed for
+  display, with the average, the share of time "in step" (≥ 80 %) and a score timeline.
+  When the reference ends (or on Stop) a summary lists the body parts most often red.
+- **Mirror**: a student facing the video copies it like a mirror (their left arm copies
+  the reference's right). *Auto* pairs the sides that match best; *Mirror* and *Same side*
+  force a pairing.
+- **Delay**: a student follows a little late, so each pose is compared with the reference
+  poses of the last 0.6 s (adjustable) and the best match is kept; the delay is shown.
+- A 3-2-1 countdown leaves time to get in position; the reference can play at ×0.5 or
+  ×0.75 to practise, and be restarted. Keypoint adjustments saved for the reference video
+  are used for it too.
+- Film the student from the same side as the reference: angles are 2-D.
+
+Code: `app/ballet/comparison.py` (the rules), `app/live/comparison.py` (the session:
+two trackers, delay matching, statistics), `app/api/compare.py` (WebSocket), and
+`web/src/pages/Compare.tsx` with `web/src/compare/`.
+
 ## Architecture
 
 ![Docker Compose architecture](docs/images/architecture.svg)

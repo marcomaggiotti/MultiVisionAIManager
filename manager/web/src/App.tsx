@@ -2,6 +2,7 @@ import { NavLink, Route, Routes, useLocation } from "react-router-dom";
 import { api } from "./api";
 import { useLoad } from "./hooks";
 import LiveStudio from "./pages/LiveStudio";
+import Compare from "./pages/Compare";
 import Dashboard from "./pages/Dashboard";
 import Sessions from "./pages/Sessions";
 import Analyze from "./pages/Analyze";
@@ -12,6 +13,7 @@ import { LiveSessionProvider, useLiveSession } from "./live/LiveSessionContext";
 
 const NAV = [
   { to: "/", label: "Live studio" },
+  { to: "/compare", label: "Compare" },
   { to: "/sessions", label: "Sessions" },
   { to: "/analysis", label: "Analysis" },
   { to: "/modules", label: "Modules" },
@@ -38,7 +40,7 @@ function LiveIndicator() {
 
 function Shell() {
   const modules = useLoad(() => api<any[]>("/api/modules"), [], 8000);
-  const wide = useLocation().pathname === "/";
+  const wide = ["/", "/compare"].includes(useLocation().pathname);
   return (
     <div className="layout">
       <header className="topbar">
@@ -63,6 +65,7 @@ function Shell() {
       <main className={`content ${wide ? "wide" : ""}`}>
         <Routes>
           <Route path="/" element={<LiveStudio />} />
+          <Route path="/compare" element={<Compare />} />
           <Route path="/sessions" element={<Sessions />} />
           <Route path="/analysis" element={<Analyze />} />
           <Route path="/modules" element={<Dashboard />} />

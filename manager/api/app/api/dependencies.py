@@ -43,3 +43,11 @@ def get_module(name: str, registry: Registry) -> RegisteredModule:
 
 
 Module = Annotated[RegisteredModule, Depends(get_module)]
+
+
+async def running_yolo_url(registry: ModuleRegistry) -> str:
+    """The YOLO module's URL, once it runs (the manager starts it if it can)."""
+    problem = await registry.ensure_running("yolo")
+    if problem:
+        raise RuntimeError(f"YOLO module: {problem}")
+    return registry.get("yolo").url
