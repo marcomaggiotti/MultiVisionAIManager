@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import ballet
+from app.ballet import evaluate_pose
 from app.config import Settings
 from app.main import create_app
 from tests.test_manager import ARABESQUE, PLIE, jpg
@@ -20,19 +21,20 @@ BENT_ARABESQUE[15] = [92, 200, 0.9]
 
 
 def test_recognition_and_feedback():
-    a = ballet.evaluate(ARABESQUE)
+    a = evaluate_pose(ARABESQUE).to_api()
     assert a["pose"]["step"] == "arabesque" and a["working_side"] == "right"
     assert all(i["status"] == "ok" for i in a["feedback"])
-    b = ballet.evaluate(BENT_ARABESQUE)
+    b = evaluate_pose(BENT_ARABESQUE).to_api()
     bad = [i for i in b["feedback"] if i["status"] != "ok"]
     assert b["pose"]["step"] == "arabesque"
     assert any(i["part"] == "left_leg" and "Supporting knee" in i["message"] for i in bad)
     assert b["parts"]["left_leg"] in {"warn", "bad"}
-    p = ballet.evaluate(PLIE)
+    p = evaluate_pose(PLIE).to_api()
     assert p["pose"]["step"] == "plié" and "demi-plié" in p["feedback"][0]["message"]
     hidden = [[0, 0, 0.1]] * 17
-    assert ballet.evaluate(hidden)["pose"] is None
-    assert "whole body" in ballet.evaluate(hidden)["feedback"][0]["message"]
+    hidden_evaluation = evaluate_pose(hidden)
+    assert hidden_evaluation.recognised is None
+    assert "whole body" in hidden_evaluation.corrections[0].message
     vocab = ballet.vocabulary()
     assert set(vocab["families"]["adagio"]) <= set(vocab["poses"])
 

@@ -8,7 +8,8 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from app import pose
+from app.ballet import evaluate_pose
+from app.ballet.motion import DancerFrame, analyse_motion
 from app.config import Settings
 from app.main import create_app
 
@@ -53,7 +54,7 @@ def fake_modules(request: httpx.Request) -> httpx.Response:
                "sensitivity": {"agreement": 0.83}}  # fmt: skip
         return httpx.Response(200, json={"results": [res] * n})
     if host == "vlm" and path == "/v1/generate":
-        assert b"pose cues" in request.content  # the perception context reaches the VLM
+        assert b"pose recognition: arabesque" in request.content  # the perception context reaches the VLM
         return httpx.Response(200, json={"text": "This is an Arabesque, then a plie.", "latency_ms": 12})
     if host == "yolo" and path == "/ui/":
         return httpx.Response(200, text="<html>yolo</html>", headers={"content-type": "text/html"})
@@ -77,14 +78,19 @@ def client(tmp_path):
         yield c
 
 
-def test_pose_cues_recognise_arabesque_and_plie():
-    a = pose.analyse(ARABESQUE)
-    assert a["angles"]["right_leg_elevation"] > 85 and a["angles"]["right_knee"] > 170
-    assert any("arabesque" in c["steps"] for c in a["cues"])
-    p = pose.analyse(PLIE)
-    assert any("plié" in c["steps"] for c in p["cues"])
-    m = pose.motion([{"keypoints": ARABESQUE, "pose": a}, {"keypoints": PLIE, "pose": p}])
-    assert m["peak_leg_elevation_frame"] == 0 and m["transitions"][0]["mean_joint_motion"] > 0
+def test_measurements_recognition_and_motion():
+    arabesque = evaluate_pose(ARABESQUE)
+    angles = arabesque.measurements.angles
+    assert angles.right_leg_elevation > 85 and angles.right_knee > 170
+    assert arabesque.recognised.movement == "arabesque"
+    plie = evaluate_pose(PLIE)
+    assert plie.recognised.movement == "plié"
+
+    def as_frame(evaluation, keypoints):
+        return DancerFrame(keypoints, evaluation.measurements.angles.as_dict(), evaluation.measurements.body_height)
+
+    motion = analyse_motion([as_frame(arabesque, ARABESQUE), as_frame(plie, PLIE)])
+    assert motion["peak_leg_elevation_frame"] == 0 and motion["transitions"][0]["mean_joint_motion"] > 0
 
 
 def test_module_status(client):
@@ -109,7 +115,7 @@ def test_analyze_sequence_fuses_evidence_and_is_saved(client):
     assert res.status_code == 200, res.text
     body = res.json()
     assert body["errors"] == []
-    assert body["frames"][0]["dancer"]["pose"]["cues"]
+    assert body["frames"][0]["dancer"]["evaluation"]["pose"]["step"] == "arabesque"
     assert body["frames"][1]["clip"]["top"][0]["label"] == "arabesque"
     assert body["motion"]["peak_leg_elevation_frame"] == 0
     assert body["fused"][0]["step"] == "arabesque"

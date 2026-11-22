@@ -1,8 +1,14 @@
-"""History of analyses (SQLite + the pictures on disk)."""
+"""History of analyses and live sessions: SQLite for the records, JPEG files for the
+pictures of an analysis.
+
+    <data_dir>/manager.sqlite3
+    <data_dir>/analyses/<id>/<picture index>.jpg
+"""
 
 from __future__ import annotations
 
 import json
+import shutil
 import sqlite3
 import time
 import uuid
@@ -10,103 +16,141 @@ from pathlib import Path
 
 from PIL import Image
 
+STORED_PICTURE_MAX_SIDE = 1600
 
-class Store:
-    def __init__(self, root: Path) -> None:
-        self.root = root
-        root.mkdir(parents=True, exist_ok=True)
-        self.db = root / "manager.sqlite3"
-        with self._conn() as c:
-            c.execute(
-                "CREATE TABLE IF NOT EXISTS analyses ("
-                "id TEXT PRIMARY KEY, created REAL, title TEXT, frames INTEGER, top TEXT, result TEXT)"
-            )
-            c.execute(
-                "CREATE TABLE IF NOT EXISTS live_sessions ("
-                "id TEXT PRIMARY KEY, created REAL, title TEXT, duration REAL, frames INTEGER, data TEXT)"
-            )
+SCHEMA = [
+    "CREATE TABLE IF NOT EXISTS analyses ("
+    "id TEXT PRIMARY KEY, created REAL, title TEXT, frames INTEGER, top TEXT, result TEXT)",
+    "CREATE TABLE IF NOT EXISTS live_sessions ("
+    "id TEXT PRIMARY KEY, created REAL, title TEXT, duration REAL, frames INTEGER, data TEXT)",
+]
 
-    def _conn(self) -> sqlite3.Connection:
-        return sqlite3.connect(self.db)
 
-    def save(self, result: dict, images: list[Image.Image], title: str | None = None) -> str:
-        analysis_id = time.strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:6]
-        folder = self.root / "analyses" / analysis_id
+class RecordNotFoundError(LookupError):
+    """No analysis, picture or session with that id."""
+
+
+def new_id() -> str:
+    """Sortable by time, unique: ``20261121-234512-c91c``."""
+    return time.strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:4]
+
+
+class HistoryStore:
+    def __init__(self, data_dir: Path) -> None:
+        self.data_dir = data_dir
+        data_dir.mkdir(parents=True, exist_ok=True)
+        self.database_path = data_dir / "manager.sqlite3"
+        with self._connect() as connection:
+            for statement in SCHEMA:
+                connection.execute(statement)
+
+    def _connect(self) -> sqlite3.Connection:
+        return sqlite3.connect(self.database_path)
+
+    def _analysis_dir(self, analysis_id: str) -> Path:
+        return self.data_dir / "analyses" / Path(analysis_id).name  # no path traversal
+
+    # --- analyses -------------------------------------------------------------------
+    def save_analysis(self, result: dict, pictures: list[Image.Image], title: str | None = None) -> str:
+        analysis_id = new_id()
+        folder = self._analysis_dir(analysis_id)
         folder.mkdir(parents=True)
-        for i, im in enumerate(images):
-            copy = im.copy()
-            copy.thumbnail((1600, 1600))
-            copy.save(folder / f"{i}.jpg", quality=90)
-        top = result["fused"][0]["step"] if result.get("fused") else None
-        with self._conn() as c:
-            c.execute(
+        for index, picture in enumerate(pictures):
+            stored = picture.copy()
+            stored.thumbnail((STORED_PICTURE_MAX_SIDE, STORED_PICTURE_MAX_SIDE))
+            stored.save(folder / f"{index}.jpg", quality=90)
+        top_movement = result["fused"][0]["step"] if result.get("fused") else None
+        with self._connect() as connection:
+            connection.execute(
                 "INSERT INTO analyses VALUES (?, ?, ?, ?, ?, ?)",
-                (analysis_id, time.time(), title or "", len(images), top, json.dumps(result)),
+                (analysis_id, time.time(), title or "", len(pictures), top_movement, json.dumps(result)),
             )
         return analysis_id
 
-    def list(self, limit: int = 50) -> list[dict]:
-        with self._conn() as c:
-            rows = c.execute(
+    def list_analyses(self, limit: int = 50) -> list[dict]:
+        with self._connect() as connection:
+            rows = connection.execute(
                 "SELECT id, created, title, frames, top FROM analyses ORDER BY created DESC LIMIT ?", (limit,)
             ).fetchall()
-        return [dict(zip(("id", "created", "title", "frames", "top"), r, strict=True)) for r in rows]
+        return [
+            {"id": analysis_id, "created": created, "title": title, "frames": frames, "top": top}
+            for analysis_id, created, title, frames, top in rows
+        ]
 
-    def get(self, analysis_id: str) -> dict:
-        with self._conn() as c:
-            row = c.execute("SELECT result, created, title FROM analyses WHERE id = ?", (analysis_id,)).fetchone()
-        if not row:
-            raise LookupError(analysis_id)
-        return {"id": analysis_id, "created": row[1], "title": row[2], **json.loads(row[0])}
+    def get_analysis(self, analysis_id: str) -> dict:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT result, created, title FROM analyses WHERE id = ?", (analysis_id,)
+            ).fetchone()
+        if row is None:
+            raise RecordNotFoundError(f"analysis {analysis_id!r} not found")
+        result, created, title = row
+        return {"id": analysis_id, "created": created, "title": title, **json.loads(result)}
 
-    def frame(self, analysis_id: str, index: int) -> Path:
-        path = self.root / "analyses" / Path(analysis_id).name / f"{int(index)}.jpg"
+    def analysis_picture(self, analysis_id: str, index: int) -> Path:
+        path = self._analysis_dir(analysis_id) / f"{int(index)}.jpg"
         if not path.exists():
-            raise LookupError(f"{analysis_id}/{index}")
+            raise RecordNotFoundError(f"picture {index} of analysis {analysis_id!r} not found")
         return path
 
-    def save_session(self, data: dict, title: str | None = None) -> str:
-        session_id = data.get("id") or (time.strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:4])
-        with self._conn() as c:
-            c.execute(
+    def delete_analysis(self, analysis_id: str) -> None:
+        with self._connect() as connection:
+            connection.execute("DELETE FROM analyses WHERE id = ?", (analysis_id,))
+        shutil.rmtree(self._analysis_dir(analysis_id), ignore_errors=True)
+
+    # --- live sessions --------------------------------------------------------------
+    def save_session(self, session: dict, title: str | None = None) -> str:
+        session_id = session.get("id") or new_id()
+        with self._connect() as connection:
+            connection.execute(
                 "INSERT OR REPLACE INTO live_sessions VALUES (?, ?, ?, ?, ?, ?)",
-                (session_id, time.time(), title or "", data.get("duration_s") or 0, data.get("frames") or 0,
-                 json.dumps(data)),
-            )  # fmt: skip
+                (
+                    session_id,
+                    time.time(),
+                    title or "",
+                    session.get("duration_s") or 0,
+                    session.get("frames") or 0,
+                    json.dumps(session),
+                ),
+            )
         return session_id
 
-    def sessions(self, limit: int = 50) -> list[dict]:
-        with self._conn() as c:
-            rows = c.execute(
+    def list_sessions(self, limit: int = 50) -> list[dict]:
+        with self._connect() as connection:
+            rows = connection.execute(
                 "SELECT id, created, title, duration, frames, data FROM live_sessions ORDER BY created DESC LIMIT ?",
                 (limit,),
             ).fetchall()
         return [
-            {"id": r[0], "created": r[1], "title": r[2], "duration_s": r[3], "frames": r[4],
-             "counts": json.loads(r[5]).get("counts", {})}
-            for r in rows
-        ]  # fmt: skip
+            {
+                "id": session_id,
+                "created": created,
+                "title": title,
+                "duration_s": duration,
+                "frames": frames,
+                "counts": json.loads(data).get("counts", {}),
+            }
+            for session_id, created, title, duration, frames, data in rows
+        ]
 
-    def session(self, session_id: str) -> dict:
-        with self._conn() as c:
-            row = c.execute("SELECT data, title, created FROM live_sessions WHERE id = ?", (session_id,)).fetchone()
-        if not row:
-            raise LookupError(session_id)
-        return {**json.loads(row[0]), "title": row[1], "created": row[2]}
+    def get_session(self, session_id: str) -> dict:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT data, title, created FROM live_sessions WHERE id = ?", (session_id,)
+            ).fetchone()
+        if row is None:
+            raise RecordNotFoundError(f"session {session_id!r} not found")
+        data, title, created = row
+        return {**json.loads(data), "title": title, "created": created}
 
     def rename_session(self, session_id: str, title: str) -> None:
-        with self._conn() as c:
-            if not c.execute("UPDATE live_sessions SET title = ? WHERE id = ?", (title, session_id)).rowcount:
-                raise LookupError(session_id)
+        with self._connect() as connection:
+            updated = connection.execute("UPDATE live_sessions SET title = ? WHERE id = ?", (title, session_id))
+        if not updated.rowcount:
+            raise RecordNotFoundError(f"session {session_id!r} not found")
 
     def delete_session(self, session_id: str) -> None:
-        with self._conn() as c:
-            if not c.execute("DELETE FROM live_sessions WHERE id = ?", (session_id,)).rowcount:
-                raise LookupError(session_id)
-
-    def delete(self, analysis_id: str) -> None:
-        import shutil
-
-        with self._conn() as c:
-            c.execute("DELETE FROM analyses WHERE id = ?", (analysis_id,))
-        shutil.rmtree(self.root / "analyses" / Path(analysis_id).name, ignore_errors=True)
+        with self._connect() as connection:
+            deleted = connection.execute("DELETE FROM live_sessions WHERE id = ?", (session_id,))
+        if not deleted.rowcount:
+            raise RecordNotFoundError(f"session {session_id!r} not found")

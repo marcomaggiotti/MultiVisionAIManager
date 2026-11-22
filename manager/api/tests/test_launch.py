@@ -13,8 +13,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.config import Settings
-from app.launchers import demux
 from app.main import create_app
+from app.modules.launchers import decode_docker_log_stream
 
 
 class FakeDocker:
@@ -102,9 +102,10 @@ def test_module_is_launched_when_it_is_needed(docker_setup):
     assert client.post("/api/manage/clip/start?wait=true").status_code == 200  # but it can, on request
 
 
-def test_demux_plain_and_framed():
-    assert demux(b"plain text") == "plain text"
-    assert demux(struct.pack(">BxxxL", 2, 3) + b"err" + struct.pack(">BxxxL", 1, 2) + b"ok") == "errok"
+def test_docker_log_stream_plain_and_multiplexed():
+    assert decode_docker_log_stream(b"plain text") == "plain text"
+    multiplexed = struct.pack(">BxxxL", 2, 3) + b"err" + struct.pack(">BxxxL", 1, 2) + b"ok"
+    assert decode_docker_log_stream(multiplexed) == "errok"
 
 
 SERVER = """

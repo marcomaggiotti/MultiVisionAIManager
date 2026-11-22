@@ -25,7 +25,7 @@ milliseconds the studio shows:
 | **Left** | Session, the ballet vocabulary with how many times each pose was performed, body-part status |
 | **Right** | Detected poses (count and time held), properties (frame rate, thresholds, frames to hold a pose, smoothing, resolution), the feedback log |
 
-**Recognised poses** (rules on joint angles, `manager/api/app/ballet.py`): arabesque,
+**Recognised poses** (rules on joint angles, `manager/api/app/ballet/recognition.py`): arabesque,
 attitude, développé, grand battement, passé, grand jeté, plié (demi / grand), second
 position, first / fifth position. When none fits, the studio says so (a transition).
 
@@ -69,7 +69,7 @@ flowchart TB
 | 02 API & application | `manager/api` (FastAPI): module registry, health, reverse proxy, pipeline, history |
 | 03 Image processing | Upload of one picture or an ordered sequence, EXIF orientation, per-model resizing, dancer crops |
 | 04 AI perception | YOLO (detection + 17-keypoint pose), CLIP, VLM modules |
-| 05 Context & reasoning | `manager/api/app/ballet.py` + `live.py` (real-time recognition and feedback), `pose.py` + `pipeline.py`: joint angles, ballet pose cues, motion across frames, a VLM prompt grounded in those measurements, evidence fusion |
+| 05 Context & reasoning | `manager/api/app/ballet/` (measurements, movement recognition, technique feedback, motion), `live/` (real-time sessions), `analysis/` (multi-module pipeline, VLM context, evidence fusion) |
 | 06 Output & knowledge | Structured results, analysis history with the pictures |
 | 07 Data & infrastructure | Docker Compose, a volume per module, shared Hugging Face cache, SQLite (PostgreSQL / vector DB later) |
 
@@ -234,7 +234,14 @@ The CLIP and VLM suites build tiny random models offline, so they exercise the r
 docker-compose.yml          GPU stack            docker-compose.cpu.yml   CPU override
 modules.json                module registry (Docker)   modules.local.json   same, local processes
 start.sh                    clone the YOLO module, build, create the modules, start the manager
-manager/api/                hub: main.py (routes, proxy), registry.py + launchers.py (launching), pipeline.py, pose.py
+manager/api/app/            hub (FastAPI)
+  main.py                   app factory: shared clients, registry, store, routers
+  api/                      routers: modules (status, launch, proxy), live, analysis, knowledge
+  modules/                  module registry and launchers (Docker, local process)
+  ballet/                   keypoints, measurements, movements, recognition, feedback, motion
+  live/                     real-time sessions: smoothing, movement tracking, correction log
+  analysis/                 multi-module pipeline, VLM context, evidence fusion
+  storage.py                history (SQLite)
 manager/web/                React app: pages/LiveStudio + live/ (panels, timeline, session hook), Analyze, Dashboard (modules), studios
 modules/clip/               CLIP module: engine.py, analysis.py, gallery.py, training.py, static/ (own page)
 modules/vlm/                VLM module: engine.py, training.py (LoRA, evaluation), metrics.py, static/
