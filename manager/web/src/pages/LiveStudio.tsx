@@ -1,11 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { api, form, json, post } from "../api";
 import { useLoad } from "../hooks";
 import { Slider } from "../components/ui";
 import { BodyMap, CameraPanel, PoseCard, Skeleton3D } from "../live/panels";
 import { Timeline } from "../live/Timeline";
 import { Source, useLive } from "../live/useLive";
-import { STATUS_COLOR, Status, Vocabulary, fmtTime, stepColor } from "../live/types";
+import { usePlayback } from "../live/usePlayback";
+import { Overlay } from "../live/drawing";
+import { SnapshotDialog } from "../live/SnapshotDialog";
+import { Recorded, STATUS_COLOR, Status, Vocabulary, fmtTime, stepColor } from "../live/types";
 
 const PART_LABEL: Record<string, string> = {
   head: "Head", shoulders: "Shoulders", torso: "Torso", hips: "Hips",
@@ -18,11 +21,9 @@ export default function LiveStudio() {
   const vocab = useLoad(() => api<Vocabulary>("/api/ballet/vocabulary"), []).data;
   const [source, setSource] = useState<Source>("camera");
   const [files, setFiles] = useState<File[]>([]);
-  const [overlays, setOverlays] = useState(new Set(["skeleton", "angles"]));
+  const [overlays, setOverlays] = useState<Set<Overlay>>(new Set<Overlay>(["skeleton", "angles"]));
   const [mirror, setMirror] = useState(false);
-  const [follow, setFollow] = useState(true);
-  const [index, setIndex] = useState(-1);
-  const [playing, setPlaying] = useState(false);
+  const [snapshotFrame, setSnapshotFrame] = useState<Recorded | null>(null);
   const [dancer, setDancer] = useState(() => { try { return localStorage.getItem("dancer") ?? ""; } catch { return ""; } });
   const [settings, setSettings] = useState(live.settings);
   const [busy, setBusy] = useState<string | null>(null);
@@ -30,19 +31,14 @@ export default function LiveStudio() {
   const fileInput = useRef<HTMLInputElement>(null);
 
   const frames = live.frames;
-  const shownIndex = follow ? frames.length - 1 : Math.min(index, frames.length - 1);
-  const frame = shownIndex >= 0 ? frames[shownIndex] : null;
   const latest = frames.length ? frames[frames.length - 1] : null;
   const isLive = live.status === "live";
-
-  // Replay the recorded frames at their original pace.
-  useEffect(() => {
-    if (!playing || follow) return;
-    if (index >= frames.length - 1) { setPlaying(false); return; }
-    const dt = (frames[index + 1].result.t - frames[index].result.t) * 1000;
-    const id = window.setTimeout(() => setIndex((i) => i + 1), Math.min(1000, Math.max(30, dt)));
-    return () => window.clearTimeout(id);
-  }, [playing, index, follow, frames, live.version]);
+  const playback = usePlayback(
+    { frames, version: live.version, isCapturing: isLive, capturePaused: live.capturePaused,
+      pauseCapture: live.pauseCapture, resumeCapture: live.resumeCapture },
+    setSnapshotFrame,
+  );
+  const frame = playback.shownFrame;
 
   const held = useMemo(() => {
     const out: Record<string, number> = {};
@@ -58,7 +54,7 @@ export default function LiveStudio() {
     live.configure({ [key]: value });
   };
 
-  const start = () => { setFollow(true); setPlaying(false); live.start(source, files); };
+  const start = () => { playback.startFollowing(); live.start(source, files); };
 
   const save = async () => {
     setBusy("save");
@@ -91,7 +87,12 @@ export default function LiveStudio() {
     setBusy(null);
   };
 
-  const toggleOverlay = (o: string) => { const s = new Set(overlays); if (s.has(o)) s.delete(o); else s.add(o); setOverlays(s); };
+  const toggleOverlay = (overlay: Overlay) => {
+    const next = new Set(overlays);
+    if (next.has(overlay)) next.delete(overlay);
+    else next.add(overlay);
+    setOverlays(next);
+  };
   const parts = frame?.result.evaluation?.parts;
   const partMessage = (p: string) => frame?.result.evaluation?.feedback.find((f) => f.part === p && f.status !== "ok")?.message;
 
@@ -167,8 +168,8 @@ export default function LiveStudio() {
             </button>
           )}
           <div className="seg">
-            {[["skeleton", "Skeleton"], ["box", "Box"], ["angles", "Angles"]].map(([o, label]) => (
-              <button key={o} className={overlays.has(o) ? "on" : ""} onClick={() => toggleOverlay(o)}>{label}</button>
+            {([["skeleton", "Skeleton"], ["box", "Box"], ["angles", "Angles"]] as [Overlay, string][]).map(([overlay, label]) => (
+              <button key={overlay} className={overlays.has(overlay) ? "on" : ""} onClick={() => toggleOverlay(overlay)}>{label}</button>
             ))}
             <button className={mirror ? "on" : ""} onClick={() => setMirror(!mirror)} title="Show the camera like a studio mirror (panel A only)">Mirror</button>
           </div>
@@ -178,7 +179,7 @@ export default function LiveStudio() {
             : <button onClick={start} disabled={source !== "camera" && !files.length}>● Start</button>}
           <button className="ghost" onClick={save} disabled={!frames.length || busy !== null}>{busy === "save" ? "Saving…" : "Save"}</button>
           <button className="success" onClick={coach} disabled={!frame || busy !== null} title="Deeper feedback on the shown frame (CLIP + VLM)">{busy === "coach" ? "Asking…" : "AI coach"}</button>
-          <button className="danger" onClick={() => { live.reset(); setIndex(-1); setFollow(true); }} disabled={isLive || !frames.length}>Reset</button>
+          <button className="danger" onClick={() => { live.reset(); playback.reset(); }} disabled={isLive || !frames.length}>Reset</button>
         </div>
         {live.error && <div className="error">{live.error}</div>}
         <div className="panels">
@@ -187,10 +188,9 @@ export default function LiveStudio() {
           <Skeleton3D frame={frame} />
           <PoseCard frame={frame} vocab={vocab} />
         </div>
-        <Timeline frames={frames} index={shownIndex} version={live.version} vocab={vocab}
-          onSeek={(i) => { setFollow(false); setIndex(i); }}
-          playing={playing} onPlay={() => { if (shownIndex >= frames.length - 1) setIndex(0); setFollow(false); setPlaying(!playing); }}
-          live={follow} onLive={() => { setFollow(true); setPlaying(false); }} />
+        <Timeline frames={frames} index={playback.shownIndex} version={live.version} vocab={vocab}
+          player={playback.player} actions={playback.actions} />
+        {snapshotFrame && <SnapshotDialog frame={snapshotFrame} overlays={overlays} onClose={() => setSnapshotFrame(null)} />}
       </div>
 
       {/* ---------- right ---------- */}
@@ -220,7 +220,7 @@ export default function LiveStudio() {
             {live.comments.length === 0 && <p className="small muted">Corrections that persist are logged here. “AI coach” adds a teacher-style comment on the shown frame.</p>}
             {[...live.comments].reverse().map((c, i) => (
               <div key={i} className={`fb ${c.kind === "coach" ? "ok" : c.status}`} style={{ cursor: "pointer" }}
-                onClick={() => { const k = frames.findIndex((f) => f.result.t >= c.t); if (k >= 0) { setFollow(false); setIndex(k); } }}>
+                onClick={() => playback.seek(frames.findIndex((recorded) => recorded.result.t >= c.t))}>
                 <i style={c.kind === "coach" ? { background: "var(--clip)" } : undefined} />
                 <div><span className="mono small muted">{fmtTime(c.t)}{c.pose ? ` · ${c.pose}` : ""}</span><div style={{ whiteSpace: "pre-wrap" }}>{c.message}</div></div>
               </div>

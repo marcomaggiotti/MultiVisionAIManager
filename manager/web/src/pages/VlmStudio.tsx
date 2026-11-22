@@ -5,6 +5,8 @@ import { Bars, Card, Check, ErrorBox, Field, Files, Json, KV, Page, Slider, Stat
 import { Heatmap, LineChart, StackedBars } from "../components/charts";
 import { ImageOverlay } from "../components/ImageOverlay";
 import { JobList } from "../components/Jobs";
+import { SnapshotNotice } from "../components/SnapshotNotice";
+import { Snapshot, useIncomingSnapshot } from "../live/snapshot";
 
 const V = (p: string) => mod("vlm", p);
 type Tab = "models" | "chat" | "decoding" | "inspect" | "datasets" | "tuning" | "evaluation";
@@ -111,7 +113,11 @@ function DecodingForm({ params, onChange }: { params: Params; onChange: (p: Para
 function usePromptState(presets: any) {
   const [prompt, setPrompt] = useState("");
   const [system, setSystem] = useState("");
-  useEffect(() => { if (presets && !prompt) { setPrompt(presets.prompts.identify_step); setSystem(presets.system); } }, [presets, prompt]);
+  useEffect(() => {
+    if (!presets) return;
+    setPrompt((current) => current || presets.prompts.identify_step);
+    setSystem((current) => current || presets.system);
+  }, [presets]);
   return { prompt, setPrompt, system, setSystem };
 }
 
@@ -129,6 +135,12 @@ function Chat({ presets }: { presets: any }) {
   const [files, setFiles] = useState<File[]>([]);
   const urls = useObjectUrls(files);
   const s = usePromptState(presets);
+  const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  useIncomingSnapshot("vlm", (received) => {
+    setSnapshot(received);
+    setFiles([received.file]);
+    s.setPrompt(feedbackPromptFor(received));
+  });
   const [params, setParams] = useState<Params>({});
   const [scores, setScores] = useState(true);
   useEffect(() => { if (presets) setParams(presets.decoding); }, [presets]);
@@ -137,7 +149,8 @@ function Chat({ presets }: { presets: any }) {
   return (
     <div className="grid side">
       <Card title="Ask about pictures">
-        <Files onChange={setFiles} label="Pictures (several = a sequence, in order)" />
+        <SnapshotNotice snapshot={snapshot} />
+        <Files onChange={(picked) => { setSnapshot(null); setFiles(picked); }} label="Pictures (several = a sequence, in order)" />
         <Thumbs urls={urls} onRemove={(i) => setFiles(files.filter((_, k) => k !== i))} />
         <PromptFields presets={presets} s={s} />
         <details><summary className="small">Decoding</summary>{params.max_new_tokens !== undefined && <DecodingForm params={params} onChange={setParams} />}</details>
@@ -165,6 +178,15 @@ function Chat({ presets }: { presets: any }) {
       </Card>
     </div>
   );
+}
+
+/** A teacher-style question about a snapshot, with what the live studio measured. */
+function feedbackPromptFor(snapshot: Snapshot): string {
+  const facts = [
+    snapshot.movement ? `The pose analysis recognised: ${snapshot.movement}.` : "",
+    snapshot.corrections.length ? `Measured issues: ${snapshot.corrections.join("; ")}.` : "",
+  ].filter(Boolean).join(" ");
+  return `${facts} Give technical feedback as a ballet teacher on this exact moment: alignment, turnout, extension, pointed feet, arms and balance.`.trim();
 }
 
 const DEFAULT_CONFIGS = [

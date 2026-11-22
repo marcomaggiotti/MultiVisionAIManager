@@ -1,5 +1,6 @@
 import { ReactNode, useEffect, useRef, useState } from "react";
 import { EDGES, JOINT_NAMES, Recorded, STATUS_COLOR, Status, VIS, Vocabulary, stepColor } from "./types";
+import { Overlay, renderFrame } from "./drawing";
 
 export function Panel({ letter, title, children, corner }: { letter: string; title: string; children: ReactNode; corner?: ReactNode }) {
   return (
@@ -26,47 +27,10 @@ function useSize<T extends HTMLElement>() {
 const partColor = (parts: Record<string, Status> | undefined, part: string) => STATUS_COLOR[parts?.[part] ?? "none"] ?? STATUS_COLOR.none;
 
 /** A · the picture that was analysed, with the skeleton coloured by feedback. */
-export function CameraPanel({ frame, overlays, mirror }: { frame: Recorded | null; overlays: Set<string>; mirror: boolean }) {
+export function CameraPanel({ frame, overlays, mirror }: { frame: Recorded | null; overlays: Set<Overlay>; mirror: boolean }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
-    let cancelled = false;
-    if (!frame || !canvas.current) return;
-    createImageBitmap(frame.blob).then((bmp) => {
-      const c = canvas.current;
-      if (cancelled || !c) return;
-      c.width = bmp.width; c.height = bmp.height;
-      const ctx = c.getContext("2d")!;
-      ctx.drawImage(bmp, 0, 0);
-      const d = frame.result.dancer, ev = frame.result.evaluation;
-      if (!d) return;
-      const lw = Math.max(2, c.width / 220);
-      if (overlays.has("box")) {
-        ctx.strokeStyle = "rgba(79,140,255,.9)"; ctx.lineWidth = lw * 0.7; ctx.setLineDash([8, 6]);
-        ctx.strokeRect(d.box.x1, d.box.y1, d.box.x2 - d.box.x1, d.box.y2 - d.box.y1); ctx.setLineDash([]);
-      }
-      const k = d.keypoints;
-      if (overlays.has("skeleton")) {
-        ctx.lineCap = "round";
-        for (const [a, b, part] of EDGES) {
-          if (k[a][2] < VIS || k[b][2] < VIS) continue;
-          ctx.strokeStyle = partColor(ev?.parts, part); ctx.lineWidth = lw * 1.4;
-          ctx.shadowColor = ctx.strokeStyle; ctx.shadowBlur = 10;
-          ctx.beginPath(); ctx.moveTo(k[a][0], k[a][1]); ctx.lineTo(k[b][0], k[b][1]); ctx.stroke();
-        }
-        ctx.shadowBlur = 0; ctx.fillStyle = "#ffffff";
-        for (const p of k) if (p[2] >= VIS) { ctx.beginPath(); ctx.arc(p[0], p[1], lw * 1.1, 0, 7); ctx.fill(); }
-      }
-      if (overlays.has("angles") && ev && !mirror) {
-        ctx.font = `${Math.round(lw * 5 + 6)}px sans-serif`; ctx.fillStyle = "#e8ecf5";
-        const label = (i: number, text: string, left = false) => {
-          if (k[i][2] < VIS) return;
-          ctx.fillText(text, left ? k[i][0] - ctx.measureText(text).width - lw * 3 : k[i][0] + lw * 3, k[i][1]);
-        };
-        if (ev.angles.left_knee != null) label(13, `${ev.angles.left_knee.toFixed(0)}°`, true);
-        if (ev.angles.right_knee != null) label(14, `${ev.angles.right_knee.toFixed(0)}°`);
-      }
-    });
-    return () => { cancelled = true; };
+    if (frame && canvas.current) void renderFrame(canvas.current, frame, overlays, !mirror); // mirrored text would be unreadable
   }, [frame, overlays, mirror]);
   return (
     <Panel letter="A" title="Camera · pose overlay">
