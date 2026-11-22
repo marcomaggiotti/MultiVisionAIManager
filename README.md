@@ -50,18 +50,45 @@ persist are written to the feedback log, with the time, so you can jump back to 
 - Angles are measured in the picture (2-D): film from the side for arabesque, attitude
   and jumps, from the front for positions and plié.
 
-```mermaid
-flowchart TB
-  UI["01 · Web interface (React)<br/>localhost:3000"] --> API
-  API["02 · Manager API (FastAPI)<br/>registry · health · proxy · pipelines · history"]
-  API -->|/api/modules/yolo/...| YOLO["YOLO module<br/>detection & pose · lab"]
-  API -->|/api/modules/clip/...| CLIP["CLIP module<br/>embeddings · zero-shot · retrieval"]
-  API -->|/api/modules/vlm/...| VLM["VLM module<br/>small vision-language models"]
-  API --> R["05 · Context & reasoning<br/>joint angles · ballet cues · motion · fusion"]
-  YOLO & CLIP & VLM --> GPU[(GPU)]
-  API --> DB[(SQLite history)]
-  CLIP & VLM --> HF[(Hugging Face cache)]
-```
+## Architecture
+
+![Docker Compose architecture](docs/images/architecture.svg)
+
+*(Source: [`docs/images/architecture.svg`](docs/images/architecture.svg); PNG version:
+[`docs/images/architecture.png`](docs/images/architecture.png).)*
+
+### Containers
+
+`docker compose up -d --build` creates one Compose project, **`multivision`**, with five
+containers on one network (`multivision_default`), where they reach each other by service
+name (`http://yolo:8000`, ...).
+
+| Service | Image built from | Role | Ports on the host | Storage |
+| --- | --- | --- | --- | --- |
+| `web` | `manager/web` (React + Vite, served by nginx) | The web interface; forwards `/api/*` and the WebSocket to the manager | `3000` (http), `3443` (https, phones) | `web-certs` (self-signed certificate) |
+| `manager-api` | `manager/api` (FastAPI) | The hub: module registry, launching, reverse proxy, live sessions, analysis pipeline, history | `127.0.0.1:8080` | `manager-data` (SQLite, pictures), `modules.json` (read-only), Docker socket |
+| `yolo` | `modules/yolo` = [detect_image_engine](https://github.com/marcomaggiotti/detect_image_engine) (git submodule) | Detection and 17-keypoint pose; datasets, training, robustness, latency | `127.0.0.1:8001` | `yolo-data` |
+| `clip` | `modules/clip` | CLIP / SigLIP embeddings, zero-shot, retrieval, fine-tuning | `127.0.0.1:8002` | `clip-data`, `hf-cache` |
+| `vlm` | `modules/vlm` | Small vision-language models, decoding, attention, LoRA, evaluation | `127.0.0.1:8003` | `vlm-data`, `hf-cache` |
+
+- **Master / slave.** Only the manager talks to the modules. The browser talks to the
+  manager (`/api/modules/<name>/...` is forwarded to the module), so the modules' ports
+  are bound to `127.0.0.1` and are only for debugging (`/ui/`, `/docs`).
+- **Launching.** The manager mounts `/var/run/docker.sock` and starts or stops the module
+  containers through the Docker Engine API, finding them by their Compose labels. A
+  module is started the first time it is needed; the VLM stops after 30 idle minutes to
+  free GPU memory ([`modules.json`](modules.json)). Docker access is root-equivalent, which
+  is why the manager's own port is bound to `127.0.0.1`.
+- **GPU.** `yolo`, `clip` and `vlm` reserve the NVIDIA GPU
+  (`deploy.resources.reservations.devices`); `docker-compose.cpu.yml` removes the
+  reservation for machines without one.
+- **Data.** Named volumes survive rebuilds. `hf-cache` is shared by `clip` and `vlm`, so a
+  Hugging Face model is downloaded once; those containers run as the same non-root user
+  (uid 10001) so both can write to it.
+- **One request, end to end (live studio).** The browser grabs a camera frame → sends the
+  JPEG over the WebSocket to `web` → `manager-api` → `POST http://yolo:8000/v1/detect` →
+  keypoints back to the manager → ballet recognition and feedback → JSON back to the browser,
+  which draws the four panels. The next frame leaves when the answer arrives.
 
 | Layer (from the design) | Implemented as |
 | --- | --- |
@@ -139,6 +166,58 @@ It is cloned automatically into `modules/yolo` (git submodule).
 | Semantic retrieval | *Retrieval*: galleries, search by text or by picture |
 | Linear probing | *Fine-tuning*: probe on frozen embeddings, compared with zero-shot, confusion matrix |
 | Fine-tuning, hard negatives, domain adaptation | *Fine-tuning*: contrastive training with layer-unfreezing strategies, fixed or learnable temperature, hard-negative weighting (β) |
+
+#### How CLIP works: the image encoder of CLIP ViT-B/32, step by step
+
+![CLIP ViT-B/32: overview, architecture and every step](docs/images/clip-vit-b32-overview.png)
+
+CLIP (*Contrastive Language-Image Pretraining*) has two encoders: an **image encoder** (a
+Vision Transformer, ViT-B/32) and a **text encoder** (a Transformer). Both turn their input
+into a **512-dimensional vector in the same embedding space**. They were trained together,
+on about 400 million image-text pairs, so that a picture and a matching caption get
+vectors pointing in the same direction (high cosine similarity), while mismatched pairs
+point apart (contrastive InfoNCE loss).
+
+![CLIP ViT-B/32: training vs inference, data flow and key questions](docs/images/clip-vit-b32-walkthrough.png)
+
+What happens to one 224 × 224 picture inside the image encoder (`B` = batch size):
+
+| Step | Operation | Output shape |
+| --- | --- | --- |
+| 1 | Input image (RGB) | `(B, 3, 224, 224)` |
+| 2 | **Patch embedding**: a `Conv2d` with kernel 32, stride 32 and 768 output channels cuts the image into 7 × 7 = 49 non-overlapping 32 × 32 patches and turns each into a 768-number vector | `(B, 768, 7, 7)` |
+| 3 | Flatten and transpose: one row per patch (the "patch tokens") | `(B, 49, 768)` |
+| 4 | Prepend the **CLS token**: a learned 768-number vector (not empty: its values are learned in pretraining) that will collect a summary of the whole picture | `(B, 50, 768)` |
+| 5 | Add **positional embeddings**: one learned vector per position (0 for CLS, 1-49 for the patches) so the model knows where each patch was | `(B, 50, 768)` |
+| 6 | **12 Transformer blocks**. Each: LayerNorm → **multi-head self-attention** (12 heads of 64 dimensions; every token looks at every other token: `softmax(QKᵀ/√64)·V`) → residual connection → LayerNorm → **MLP** (768 → 3072 → 768 with GELU) → residual connection | `(B, 50, 768)` |
+| 7 | Final LayerNorm | `(B, 50, 768)` |
+| 8 | Take the **CLS token** only (row 0) | `(B, 768)` |
+| 9 | **CLIP projection**: a learned linear map 768 → 512 into the shared space | `(B, 512)` |
+| 10 | **L2 normalisation** (unit length), so a dot product is a cosine similarity | `(B, 512)` |
+
+- **Training vs inference.** *Training* (done once by OpenAI) learned every weight: the
+  Conv2d, the CLS vector, the positional embeddings, the 12 blocks and the projection.
+  *Inference*, which is what this project does with the pretrained
+  `openai/clip-vit-base-patch32`, is one forward pass: nothing is learned, the CLS vector
+  and positional embeddings are fixed values.
+- **Zero-shot classification** follows directly: embed the picture, embed one sentence per
+  label ("a photo of a ballet dancer doing an arabesque", ...), and pick the label whose
+  vector is closest. The model's learned **temperature** (about 0.01) scales the cosine
+  similarities before the softmax.
+
+Where each concept appears in this project:
+
+| Concept from the pictures | In the CLIP module |
+| --- | --- |
+| Two encoders, 512-d shared space | *Model* tab: both towers with their image size, patch size, number of tokens (`(224 / 32)² + 1 = 50` for ViT-B/32), layers, heads and parameters ([`engine.py`](modules/clip/app/engine.py) `HFEncoder.info`) |
+| Patch size 32 vs 16 | The catalogue offers ViT-B/32 (fastest, 50 tokens) and ViT-B/16 (default: 197 tokens, finer details of the feet and hands) |
+| Cosine similarity, temperature | *Similarity* tab, and `analysis.similarity` / `analysis.zero_shot` in [`analysis.py`](modules/clip/app/analysis.py) |
+| Text encoder and prompts | *Zero-shot & prompts* and *Tokenizer* tabs: prompt ensembles and how the wording changes the answer |
+| Embedding space | *Embedding space* tab: 2-D map of pictures and texts and the "modality gap" between them |
+| Training vs inference | Inference everywhere; *Fine-tuning* trains a linear probe on the frozen 512-d vectors, or updates the last blocks and the projection with the same contrastive loss ([`training.py`](modules/clip/app/training.py)) |
+
+> The two explanation sheets are in [`docs/images/`](docs/images/):
+> `clip-vit-b32-overview.png` (12 pages) and `clip-vit-b32-walkthrough.png` (16 pages).
 
 ### VLM (`modules/vlm`)
 
