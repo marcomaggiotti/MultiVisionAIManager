@@ -8,6 +8,8 @@ import { Group, OptionsForm } from "../components/OptionsForm";
 import { JobList } from "../components/Jobs";
 import { LineChart } from "../components/charts";
 import { SnapshotNotice } from "../components/SnapshotNotice";
+import { ZoomableView } from "../components/ZoomableView";
+import { KeypointsPanel } from "../components/KeypointsPanel";
 import { Snapshot, useIncomingSnapshot } from "../live/snapshot";
 
 const Y = (p: string) => mod("yolo", p);
@@ -34,6 +36,8 @@ function Inference() {
   const [files, setFiles] = useState<File[]>([]);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   useIncomingSnapshot("yolo", (received) => { setSnapshot(received); setFiles([received.file]); });
+  const [selectedPerson, setSelectedPerson] = useState(0);
+  const [highlightedKeypoint, setHighlightedKeypoint] = useState<number | null>(null);
   const urls = useObjectUrls(files);
   const [classes, setClasses] = useState("person");
   const [conf, setConf] = useState(0.25);
@@ -48,8 +52,10 @@ function Inference() {
   const detect = useAction(async () => {
     await api(Y("/v1/lab/runtime"), json("PUT", { iou_threshold: iou, image_size: size, max_detections: maxDet, half }));
     const q = new URLSearchParams({ classes: classes || "*", confidence: String(conf) });
+    setSelectedPerson(0);
     return api(Y(`/v1/detect?${q}`), post(form({ image: files[0] })));
   });
+  const detections = detect.data?.detections ?? [];
   const labels = model.data ? Object.values(model.data.labels as Record<string, string>) : [];
   return (
     <div className="grid side">
@@ -70,14 +76,26 @@ function Inference() {
         <ErrorBox error={detect.error ?? runtime.error} />
       </Card>
       <Card title="Result">
-        {urls[0] ? <ImageOverlay src={urls[0]} detections={detect.data?.detections ?? []} /> : <p className="muted">Choose a picture.</p>}
+        {urls[0] ? (
+          <div className="grid result-split">
+            <ZoomableView resetKey={urls[0]}>
+              <ImageOverlay src={urls[0]} detections={detections} highlight={detections.length > 1 ? selectedPerson : undefined}
+                highlightKeypoint={highlightedKeypoint} maxHeight="100%" />
+            </ZoomableView>
+            <div>
+              <h3 style={{ marginTop: 0 }}>Keypoints</h3>
+              <KeypointsPanel detections={detections} selectedPerson={selectedPerson} onSelectPerson={setSelectedPerson}
+                highlightedKeypoint={highlightedKeypoint} onHighlight={setHighlightedKeypoint} />
+            </div>
+          </div>
+        ) : <p className="muted">Choose a picture.</p>}
         {detect.data && (
           <>
             <p className="small muted">{detect.data.inference_ms} ms · {JSON.stringify(detect.data.counts)}</p>
             <table>
               <thead><tr><th>Label</th><th>Confidence</th><th>Box (x1, y1, x2, y2)</th><th>Keypoints</th></tr></thead>
               <tbody>{detect.data.detections.map((d: any, i: number) => (
-                <tr key={i}><td>{d.label}</td><td>{pct(d.confidence, 1)}</td><td className="mono">{[d.box.x1, d.box.y1, d.box.x2, d.box.y2].map((v: number) => v.toFixed(0)).join(", ")}</td><td>{d.keypoints ? d.keypoints.filter((k: number[]) => k[2] > 0.5).length + "/17 visible" : "–"}</td></tr>
+                <tr key={i} onClick={() => setSelectedPerson(i)} style={{ cursor: "pointer", background: i === selectedPerson ? "var(--panel-2)" : undefined }}><td>{d.label}</td><td>{pct(d.confidence, 1)}</td><td className="mono">{[d.box.x1, d.box.y1, d.box.x2, d.box.y2].map((v: number) => v.toFixed(0)).join(", ")}</td><td>{d.keypoints ? d.keypoints.filter((k: number[]) => k[2] > 0.5).length + "/17 visible" : "–"}</td></tr>
               ))}</tbody>
             </table>
           </>
