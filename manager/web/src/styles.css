@@ -127,5 +127,17 @@ details > summary { cursor: pointer; font-weight: 600; margin: 6px 0; }
 .keypoint-handle:active { cursor: grabbing; }
 .keypoint-handle.on { fill: #ffb547; stroke: #ffffff; }
 .keypoint-table td, .keypoint-table th { padding: 3px 6px; }
+.keypoint-table input.coordinate { width: 64px; padding: 2px 4px; font-family: ui-monospace, monospace; font-size: 12px; }
 .badge-adjusted { color: var(--warn); margin-left: 6px; font-size: 10px; }
 .adjusted-tag { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px; color: #1a1300; background: var(--warn); }
+
+/* ---- video cut ---- */
+.modal.video-cut { width: min(960px, 100%); }
+.cut-player { width: 100%; max-height: 48vh; background: #000; border-radius: 10px; display: block; margin-top: 8px; }
+.cut-player.small-player { max-height: 200px; width: auto; max-width: 100%; margin-top: 0; }
+.cut-bar { position: relative; height: 18px; margin: 10px 0 12px; border-radius: 6px; background: var(--panel-2); border: 1px solid var(--line); cursor: pointer; }
+.cut-kept { position: absolute; top: 0; bottom: 0; background: rgba(61, 220, 132, .35); border-left: 3px solid var(--good); border-right: 3px solid var(--good); }
+.cut-playhead { position: absolute; top: -3px; bottom: -3px; width: 2px; background: #fff; transform: translateX(-1px); }
+.cut-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-top: 8px; }
+.cut-grid input[type=number] { width: 90px; }
+.cut-result { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }

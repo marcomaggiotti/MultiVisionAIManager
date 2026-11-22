@@ -8,11 +8,14 @@ from fastapi.responses import JSONResponse
 from app.imaging import InvalidImageError
 from app.modules import LaunchError
 from app.storage import RecordNotFoundError
+from app.video_cut import FfmpegMissingError, VideoCutError
 
 STATUS_BY_ERROR: dict[type[Exception], int] = {
     RecordNotFoundError: 404,
     LaunchError: 409,
     InvalidImageError: 400,
+    VideoCutError: 422,
+    FfmpegMissingError: 503,
 }
 
 

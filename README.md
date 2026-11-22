@@ -53,9 +53,18 @@ persist are written to the feedback log, with the time, so you can jump back to 
   adjustment is stored for that moment of that video (file name + size, time in the
   video; a picture is one moment). Every later analysis of the same video uses the saved
   keypoints at that moment (orange marks on the timeline; panel A shows "✎ adjusted"), so
-  recognition, counts and corrections follow your fix. The YOLO tab edits the keypoints of
-  a snapshot or a picture the same way. API: `GET/PUT/DELETE /api/keypoint-adjustments`,
+  recognition, counts and corrections follow your fix. In **YOLO · detection & pose**
+  (Inference tab), **✎ Adjust keypoints** edits the selected person right in the result
+  view (drag, or type x / y), and **✎ Place keypoints by hand** starts from a standing
+  figure when the model found nobody; saved for that picture, or for that moment of the
+  video when the picture is a snapshot. API: `GET/PUT/DELETE /api/keypoint-adjustments`,
   `POST /api/ballet/evaluate` (evaluate any 17 keypoints).
+- **✂ Cut video** (when a video file is chosen): pick the part to keep (start / end at the
+  player position, frame by frame, preview), and the manager makes a new file with ffmpeg:
+  *exact* (MP4 H.264, re-encoded, plays everywhere) or *fast* (no re-encoding, starts at a
+  keyframe). Download it, or analyse it in the live studio right away. Keypoint
+  adjustments inside the kept part are carried over to the new file. API:
+  `POST /api/videos/cut` (multipart `video`, `start`, `end`, `mode`, `name`, `media_key`).
 - The live session belongs to the app, not to the page: open the YOLO, CLIP or VLM tab
   while a video runs (a red dot next to *Live studio* shows it is still running) and come
   back to the same video, frames and player position.
