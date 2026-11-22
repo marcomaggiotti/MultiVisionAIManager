@@ -3,6 +3,7 @@ import { api } from "./api";
 import { useLoad } from "./hooks";
 import LiveStudio from "./pages/LiveStudio";
 import Dashboard from "./pages/Dashboard";
+import Sessions from "./pages/Sessions";
 import Analyze from "./pages/Analyze";
 import YoloStudio from "./pages/YoloStudio";
 import ClipStudio from "./pages/ClipStudio";
@@ -10,6 +11,7 @@ import VlmStudio from "./pages/VlmStudio";
 
 const NAV = [
   { to: "/", label: "Live studio" },
+  { to: "/sessions", label: "Sessions" },
   { to: "/analysis", label: "Analysis" },
   { to: "/modules", label: "Modules" },
   { to: "/yolo", label: "YOLO" },
@@ -45,6 +47,7 @@ export default function App() {
       <main className={`content ${wide ? "wide" : ""}`}>
         <Routes>
           <Route path="/" element={<LiveStudio />} />
+          <Route path="/sessions" element={<Sessions />} />
           <Route path="/analysis" element={<Analyze />} />
           <Route path="/modules" element={<Dashboard />} />
           <Route path="/yolo" element={<YoloStudio />} />
