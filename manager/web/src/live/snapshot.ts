@@ -13,6 +13,8 @@ export type Snapshot = {
   movement: string | null; // recognised ballet movement at that moment
   timeSeconds: number;
   corrections: string[]; // technique corrections shown at that moment
+  mediaKey: string | null; // the video (or picture) it comes from; null for the camera
+  sourceTime: number | null; // its time inside that video
 };
 
 const JPEG_QUALITY = 0.92;
@@ -59,6 +61,8 @@ export function describeFrame(frame: Recorded): Omit<Snapshot, "file"> {
     movement: frame.result.current.step ?? evaluation?.pose?.step ?? null,
     timeSeconds: frame.result.t,
     corrections: (evaluation?.feedback ?? []).filter((item) => item.status !== "ok").map((item) => item.message),
+    mediaKey: frame.mediaKey,
+    sourceTime: frame.sourceTime,
   };
 }
 

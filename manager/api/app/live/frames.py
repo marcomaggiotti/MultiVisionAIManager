@@ -15,6 +15,7 @@ async def process_frame(
     session: LiveSession,
     jpeg_bytes: bytes,
     detection_confidence: float = 0.3,
+    source_time: float | None = None,
 ) -> dict:
     started = time.perf_counter()
     response = await client.post(
@@ -24,7 +25,7 @@ async def process_frame(
     )
     response.raise_for_status()
     yolo_response = response.json()
-    result = session.process_detections(yolo_response)
+    result = session.process_detections(yolo_response, source_time)
     result["image"] = yolo_response.get("image")
     result["latency_ms"] = {
         "yolo": yolo_response.get("inference_ms"),

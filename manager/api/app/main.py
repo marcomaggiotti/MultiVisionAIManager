@@ -24,7 +24,7 @@ from pathlib import Path
 import httpx
 from fastapi import FastAPI
 
-from app.api import analysis, knowledge, live, modules
+from app.api import adjustments, analysis, knowledge, live, modules
 from app.api.errors import register_error_handlers
 from app.config import Settings, get_settings
 from app.modules import ModuleRegistry, load_modules
@@ -73,7 +73,7 @@ def create_app(
             await docker_client.aclose()
 
     app = FastAPI(title="MultiVision AI Manager", version="0.1.0", lifespan=lifespan)
-    for router_module in (knowledge, modules, live, analysis):
+    for router_module in (knowledge, modules, live, analysis, adjustments):
         app.include_router(router_module.router)
     register_error_handlers(app)
     return app

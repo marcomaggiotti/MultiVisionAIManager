@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from app.ballet import evaluate_pose
 from app.ballet.dancer import select_main_dancer
 from app.ballet.motion import mean_joint_displacement
+from app.live.adjustments import KeypointAdjustment, find_adjustment, match_tolerance
 from app.live.corrections import CorrectionLog
 from app.live.smoothing import KeypointSmoother
 from app.live.tracking import MovementTracker
@@ -33,6 +34,9 @@ class LiveSession:
         self.tracker = MovementTracker(self.settings.hold)
         self.correction_log = CorrectionLog(self.settings.hold)
         self._previous_raw_keypoints: list | None = None
+        self.media_key: str | None = None
+        self.adjustments: list[KeypointAdjustment] = []
+        self._previous_source_time: float | None = None
 
     def configure(
         self, smoothing: float | None = None, hold: int | None = None, confidence: float | None = None
@@ -44,11 +48,29 @@ class LiveSession:
         if confidence is not None:
             self.settings.confidence = float(confidence)
 
+    def use_media(self, media_key: str | None, adjustments: list[KeypointAdjustment]) -> None:
+        """The video (or pictures) being analysed, with its saved keypoint adjustments."""
+        self.media_key = media_key
+        self.adjustments = list(adjustments)
+        self._previous_source_time = None
+
+    def add_adjustment(self, adjustment: KeypointAdjustment) -> None:
+        self.adjustments = [
+            existing for existing in self.adjustments if abs(existing.source_time - adjustment.source_time) > 1e-3
+        ] + [adjustment]
+
+    def remove_adjustment(self, source_time: float) -> None:
+        self.adjustments = [existing for existing in self.adjustments if abs(existing.source_time - source_time) > 1e-3]
+
     def elapsed(self) -> float:
         return time.time() - self.started_at
 
-    def process_detections(self, yolo_response: dict) -> dict:
-        """Update the session with the YOLO module's answer for one frame."""
+    def process_detections(self, yolo_response: dict, source_time: float | None = None) -> dict:
+        """Update the session with the YOLO module's answer for one frame.
+
+        ``source_time`` is the frame's time inside the video: a saved keypoint
+        adjustment at that moment replaces the model's keypoints.
+        """
         now = self.elapsed()
         self.frame_count += 1
         result: dict = {
@@ -60,9 +82,18 @@ class LiveSession:
             "motion": None,
             "new_events": [],
             "new_comments": [],
+            "source_time": source_time,
+            "adjusted": False,
         }
         recognised_movement, recognition_score = None, 0.0
-        dancer = select_main_dancer(yolo_response.get("detections", []))
+        adjustment = find_adjustment(self.adjustments, source_time, match_tolerance(self._frame_gap(source_time)))
+        if adjustment:
+            dancer = adjustment.as_detection(yolo_response.get("image"))
+            self.smoother.reset()  # the adjusted keypoints are used exactly as saved
+            result["adjusted"] = True
+            result["people"] = max(result["people"], 1)
+        else:
+            dancer = select_main_dancer(yolo_response.get("detections", []))
         if dancer and dancer.get("keypoints"):
             keypoints = self.smoother.update(dancer["keypoints"], dancer["box"])
             evaluation = evaluate_pose(keypoints)
@@ -88,6 +119,13 @@ class LiveSession:
         }
         result["counts"] = dict(self.tracker.counts)
         return result
+
+    def _frame_gap(self, source_time: float | None) -> float | None:
+        """Seconds of video since the previous frame (None when unknown)."""
+        previous, self._previous_source_time = self._previous_source_time, source_time
+        if previous is None or source_time is None:
+            return None
+        return source_time - previous
 
     def _motion_since_previous_frame(self, raw_keypoints: list, body_height: float | None) -> float | None:
         previous, self._previous_raw_keypoints = self._previous_raw_keypoints, raw_keypoints

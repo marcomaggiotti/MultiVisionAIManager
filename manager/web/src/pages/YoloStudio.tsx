@@ -10,9 +10,43 @@ import { LineChart } from "../components/charts";
 import { SnapshotNotice } from "../components/SnapshotNotice";
 import { ZoomableView } from "../components/ZoomableView";
 import { KeypointsPanel } from "../components/KeypointsPanel";
+import { KeypointEditor } from "../components/KeypointEditor";
 import { Snapshot, useIncomingSnapshot } from "../live/snapshot";
+import { Det } from "../components/ImageOverlay";
+import { ImageSize, KeypointAdjustment, deleteAdjustment, findAdjustment, sameMoment, saveAdjustment, scaleAdjustment } from "../live/adjustments";
+import { useLiveSession } from "../live/LiveSessionContext";
+import { mediaKeyOf } from "../live/types";
 
 const Y = (p: string) => mod("yolo", p);
+
+type PersonDetection = Det & { adjusted?: boolean };
+type AdjustmentTarget = { mediaKey: string; sourceTime: number; label: string };
+
+/** A snapshot is adjusted at its moment of the video; any other picture as itself. */
+function adjustmentTargetOf(file: File | undefined, snapshot: Snapshot | null): AdjustmentTarget | null {
+  if (snapshot?.mediaKey != null && snapshot.sourceTime != null) {
+    return { mediaKey: snapshot.mediaKey, sourceTime: snapshot.sourceTime, label: `${snapshot.mediaKey.split("|")[0]} at ${snapshot.sourceTime.toFixed(2)} s` };
+  }
+  return file ? { mediaKey: mediaKeyOf(file), sourceTime: 0, label: file.name } : null;
+}
+
+const boxCentre = (box: Det["box"]) => [(box.x1 + box.x2) / 2, (box.y1 + box.y2) / 2];
+
+/** Put the saved adjustment in place of the person it belongs to (the closest box). */
+function applyAdjustment(detections: PersonDetection[], adjustment: KeypointAdjustment, image: ImageSize | null): PersonDetection[] {
+  const { keypoints, box } = scaleAdjustment(adjustment, image);
+  const adjusted: PersonDetection = { label: "person", confidence: 1, box, keypoints, adjusted: true };
+  const [targetX, targetY] = boxCentre(box);
+  let closest = -1;
+  detections.forEach((detection, index) => {
+    if (!detection.keypoints?.length) return;
+    const [x, y] = boxCentre(detection.box);
+    const [bestX, bestY] = closest >= 0 ? boxCentre(detections[closest].box) : [Infinity, Infinity];
+    if (Math.hypot(x - targetX, y - targetY) < Math.hypot(bestX - targetX, bestY - targetY)) closest = index;
+  });
+  if (closest < 0) return [adjusted, ...detections];
+  return detections.map((detection, index) => (index === closest ? adjusted : detection));
+}
 type Tab = "inference" | "models" | "datasets" | "training" | "robustness" | "latency";
 
 export default function YoloStudio() {
@@ -49,13 +83,45 @@ function Inference() {
     const r = runtime.data;
     if (r) { setIou(r.iou_threshold); setSize(r.image_size); setMaxDet(r.max_detections); setHalf(r.half); setConf(r.confidence_threshold); }
   }, [runtime.data]);
+  const [detections, setDetections] = useState<PersonDetection[]>([]);
+  const [editing, setEditing] = useState(false);
+  const { live } = useLiveSession();
+  const adjustmentTarget = adjustmentTargetOf(files[0], snapshot);
+  useEffect(() => setDetections([]), [files]);
   const detect = useAction(async () => {
     await api(Y("/v1/lab/runtime"), json("PUT", { iou_threshold: iou, image_size: size, max_detections: maxDet, half }));
     const q = new URLSearchParams({ classes: classes || "*", confidence: String(conf) });
     setSelectedPerson(0);
-    return api(Y(`/v1/detect?${q}`), post(form({ image: files[0] })));
+    const response = await api(Y(`/v1/detect?${q}`), post(form({ image: files[0] })));
+    const saved = adjustmentTarget ? await findAdjustment(adjustmentTarget.mediaKey, adjustmentTarget.sourceTime).catch(() => null) : null;
+    const found: PersonDetection[] = response.detections ?? [];
+    setDetections(saved ? applyAdjustment(found, saved, response.image ?? null) : found);
+    return response;
   });
-  const detections = detect.data?.detections ?? [];
+
+  /** Recorded live frames of the same moment show the adjustment too. */
+  const updateLiveFrames = (changes: Parameters<typeof live.updateFrame>[1] | ((index: number) => Parameters<typeof live.updateFrame>[1])) => {
+    if (!adjustmentTarget) return;
+    live.frames.forEach((frame, index) => {
+      if (frame.mediaKey === adjustmentTarget.mediaKey && sameMoment(frame.sourceTime, adjustmentTarget.sourceTime)) {
+        live.updateFrame(index, typeof changes === "function" ? changes(index) : changes);
+      }
+    });
+  };
+  const saveKeypoints = async (keypoints: number[][], image: ImageSize) => {
+    if (!adjustmentTarget) return;
+    const { adjustment, evaluation } = await saveAdjustment(adjustmentTarget.mediaKey, adjustmentTarget.sourceTime, keypoints, image);
+    setDetections((current) => current.map((detection, index) => (index === selectedPerson
+      ? { ...detection, confidence: 1, box: adjustment.box, keypoints: adjustment.keypoints, adjusted: true } : detection)));
+    updateLiveFrames({ dancer: { box: adjustment.box, confidence: 1, keypoints: adjustment.keypoints }, evaluation, adjusted: true });
+  };
+  const removeAdjustment = async () => {
+    if (!adjustmentTarget) return;
+    await deleteAdjustment(adjustmentTarget.mediaKey, adjustmentTarget.sourceTime);
+    updateLiveFrames((index) => ({ ...(live.frames[index].beforeAdjustment ?? {}), adjusted: false }));
+    await detect.run();
+  };
+  const selectedDetection = detections[selectedPerson];
   const labels = model.data ? Object.values(model.data.labels as Record<string, string>) : [];
   return (
     <div className="grid side">
@@ -83,18 +149,28 @@ function Inference() {
                 highlightKeypoint={highlightedKeypoint} maxHeight="100%" />
             </ZoomableView>
             <div>
-              <h3 style={{ marginTop: 0 }}>Keypoints</h3>
+              <div className="row spread">
+                <h3 style={{ margin: 0 }}>Keypoints {selectedDetection?.adjusted && <span className="adjusted-tag">✎ adjusted</span>}</h3>
+                <button className="small ghost" disabled={!selectedDetection?.keypoints?.length || !adjustmentTarget} onClick={() => setEditing(true)}
+                  title="Drag the keypoints to where the joints really are; saved for this picture (or this moment of the video)">✎ Adjust keypoints</button>
+              </div>
               <KeypointsPanel detections={detections} selectedPerson={selectedPerson} onSelectPerson={setSelectedPerson}
                 highlightedKeypoint={highlightedKeypoint} onHighlight={setHighlightedKeypoint} />
             </div>
           </div>
         ) : <p className="muted">Choose a picture.</p>}
+        {editing && urls[0] && selectedDetection?.keypoints && adjustmentTarget && (
+          <KeypointEditor imageSrc={urls[0]} keypoints={selectedDetection.keypoints}
+            title={`Adjust keypoints · person ${selectedPerson + 1}`}
+            note={`Saved for ${adjustmentTarget.label}: detecting it again, or analysing the video in the live studio, uses your keypoints.`}
+            onSave={saveKeypoints} onRemove={selectedDetection.adjusted ? removeAdjustment : undefined} onClose={() => setEditing(false)} />
+        )}
         {detect.data && (
           <>
             <p className="small muted">{detect.data.inference_ms} ms · {JSON.stringify(detect.data.counts)}</p>
             <table>
               <thead><tr><th>Label</th><th>Confidence</th><th>Box (x1, y1, x2, y2)</th><th>Keypoints</th></tr></thead>
-              <tbody>{detect.data.detections.map((d: any, i: number) => (
+              <tbody>{detections.map((d: any, i: number) => (
                 <tr key={i} onClick={() => setSelectedPerson(i)} style={{ cursor: "pointer", background: i === selectedPerson ? "var(--panel-2)" : undefined }}><td>{d.label}</td><td>{pct(d.confidence, 1)}</td><td className="mono">{[d.box.x1, d.box.y1, d.box.x2, d.box.y2].map((v: number) => v.toFixed(0)).join(", ")}</td><td>{d.keypoints ? d.keypoints.filter((k: number[]) => k[2] > 0.5).length + "/17 visible" : "–"}</td></tr>
               ))}</tbody>
             </table>

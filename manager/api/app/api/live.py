@@ -12,6 +12,7 @@ from app.api.dependencies import HttpClient, Registry, Store
 from app.http_errors import describe_http_error
 from app.live import LiveSession, process_frame
 from app.modules import ModuleRegistry
+from app.storage import HistoryStore
 
 router = APIRouter(tags=["live"])
 DEFAULT_DETECTION_CONFIDENCE = 0.3
@@ -33,8 +34,13 @@ async def live_websocket(websocket: WebSocket) -> None:
     """One real-time session.
 
     Binary message = one JPEG frame, answered by one ``{"type": "frame", ...}`` message.
-    Text messages: ``{"type": "config", "smoothing", "hold", "confidence",
-    "detection_confidence"}`` and ``{"type": "summary"}``.
+    Text messages:
+
+    * ``{"type": "media", "media_key"}``: the video (or pictures) being analysed; loads its
+      saved keypoint adjustments;
+    * ``{"type": "frame", "source_time"}``: the time inside the video of the next frame;
+    * ``{"type": "config", "smoothing", "hold", "confidence", "detection_confidence"}``;
+    * ``{"type": "summary"}``.
     """
     await websocket.accept()
     app = websocket.app
@@ -43,6 +49,8 @@ async def live_websocket(websocket: WebSocket) -> None:
     session = LiveSession()
     _live_sessions(app)[session.id] = session
     detection_confidence = DEFAULT_DETECTION_CONFIDENCE
+    next_frame_source_time: float | None = None
+    store: HistoryStore = app.state.store
     await websocket.send_json({"type": "hello", "session": session.id})
     if problem := await registry.ensure_running("yolo"):
         await websocket.send_json({"type": "error", "message": f"YOLO module: {problem}"})
@@ -54,14 +62,28 @@ async def live_websocket(websocket: WebSocket) -> None:
             if message.get("bytes") is not None:
                 try:
                     result = await process_frame(
-                        client, await _yolo_url(registry), session, message["bytes"], detection_confidence
+                        client,
+                        await _yolo_url(registry),
+                        session,
+                        message["bytes"],
+                        detection_confidence,
+                        source_time=next_frame_source_time,
                     )
                     await websocket.send_json({"type": "frame", **result})
                 except (httpx.HTTPError, RuntimeError, ValueError) as error:
                     await websocket.send_json({"type": "error", "message": describe_http_error(error)})
                 continue
             command = json.loads(message.get("text") or "{}")
-            if command.get("type") == "config":
+            if command.get("type") == "frame":
+                next_frame_source_time = command.get("source_time")
+            elif command.get("type") == "media":
+                media_key = command.get("media_key")
+                adjustments = store.list_adjustments(media_key) if media_key else []
+                session.use_media(media_key, adjustments)
+                await websocket.send_json(
+                    {"type": "media", "media_key": media_key, "adjustments": [a.source_time for a in adjustments]}
+                )
+            elif command.get("type") == "config":
                 session.configure(command.get("smoothing"), command.get("hold"), command.get("confidence"))
                 detection_confidence = float(command.get("detection_confidence") or detection_confidence)
                 await websocket.send_json(

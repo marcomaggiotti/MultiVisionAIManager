@@ -46,7 +46,19 @@ persist are written to the feedback log, with the time, so you can jump back to 
   forward, −3/−2/−1 s and +1/+2/+3 s, replay speed ×0.25 to ×2. While the camera or a video
   runs, Pause freezes the capture (a video file pauses too) so the moment can be inspected.
   Keyboard: `Space` play/pause · `←`/`→` 1 s (`Shift` 3 s) · `,`/`.` one frame ·
-  `Home`/`End` · `S` snapshot.
+  `Home`/`End` · `S` snapshot · `E` adjust keypoints.
+- **Adjust keypoints** (✎ or `E`) when the model misplaces a joint: pause, drag the points
+  to where the joints really are (zoom with the wheel, arrow keys nudge the selected point,
+  hide a point the model invented), save. The pose is re-evaluated at once, and the
+  adjustment is stored for that moment of that video (file name + size, time in the
+  video; a picture is one moment). Every later analysis of the same video uses the saved
+  keypoints at that moment (orange marks on the timeline; panel A shows "✎ adjusted"), so
+  recognition, counts and corrections follow your fix. The YOLO tab edits the keypoints of
+  a snapshot or a picture the same way. API: `GET/PUT/DELETE /api/keypoint-adjustments`,
+  `POST /api/ballet/evaluate` (evaluate any 17 keypoints).
+- The live session belongs to the app, not to the page: open the YOLO, CLIP or VLM tab
+  while a video runs (a red dot next to *Live studio* shows it is still running) and come
+  back to the same video, frames and player position.
 - **Snapshot** (📷 or `S`) of the shown frame, with or without the pose overlay: download,
   share (phone share sheet, or copy to the clipboard), open it in **YOLO · detect**,
   **CLIP · zero-shot** or **VLM · ask** (the question is pre-filled with the recognised
