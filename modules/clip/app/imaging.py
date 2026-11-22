@@ -20,5 +20,5 @@ def decode_image(data: bytes, max_pixels: int = 40_000_000) -> Image.Image:
         return ImageOps.exif_transpose(image).convert("RGB")
     except InvalidImageError:
         raise
-    except (UnidentifiedImageError, Image.DecompressionBombError, OSError, SyntaxError) as exc:
-        raise InvalidImageError("unsupported or corrupt image") from exc
+    except (UnidentifiedImageError, Image.DecompressionBombError, OSError, SyntaxError) as error:
+        raise InvalidImageError("unsupported or corrupt image") from error

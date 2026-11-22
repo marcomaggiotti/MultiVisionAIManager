@@ -17,11 +17,11 @@ from app.jobs import JobBusy
 router = APIRouter()
 
 
-def engine(request: Request) -> VLMEngine:
-    eng = request.app.state.engine
-    if eng is None:
+def get_engine(request: Request) -> VLMEngine:
+    engine = request.app.state.engine
+    if engine is None:
         raise HTTPException(503, "no model loaded: PUT /v1/model first")
-    return eng
+    return engine
 
 
 async def read_images(request: Request, files: list[UploadFile] | None):
@@ -36,8 +36,8 @@ async def read_images(request: Request, files: list[UploadFile] | None):
             raise HTTPException(413, f"{f.filename} is too large")
         try:
             images.append(decode_image(data, settings.max_image_pixels))
-        except InvalidImageError as exc:
-            raise HTTPException(400, f"{f.filename}: {exc}") from exc
+        except InvalidImageError as error:
+            raise HTTPException(400, f"{f.filename}: {error}") from error
     return images
 
 
@@ -46,16 +46,16 @@ def parse_params(params: str | None) -> dict:
         return {}
     try:
         value = json.loads(params)
-    except json.JSONDecodeError as exc:
-        raise HTTPException(422, f"params must be JSON: {exc}") from exc
+    except json.JSONDecodeError as error:
+        raise HTTPException(422, f"params must be JSON: {error}") from error
     unknown = set(value) - set(DEFAULT_PARAMS)
     if unknown:
         raise HTTPException(422, f"unknown decoding parameter(s): {', '.join(sorted(unknown))}")
     return value
 
 
-def _err(exc: Exception) -> HTTPException:
-    return HTTPException(404 if isinstance(exc, LookupError) else 400, str(exc))
+def _http_error(error: Exception) -> HTTPException:
+    return HTTPException(404 if isinstance(error, LookupError) else 400, str(error))
 
 
 def free_gpu() -> None:
@@ -76,15 +76,15 @@ def health() -> dict:
 
 @router.get("/v1/info", tags=["ops"])
 def info(request: Request) -> dict:
-    eng = request.app.state.engine
+    engine = request.app.state.engine
     return {
         "name": "vlm",
         "kind": "vision-language",
         "title": "Vision-language models",
         "version": "0.1.0",
-        "model": eng.model_id if eng else None,
-        "adapter": eng.adapter if eng else None,
-        "device": str(getattr(eng, "device", "")) if eng else None,
+        "model": engine.model_id if engine else None,
+        "adapter": engine.adapter if engine else None,
+        "device": str(getattr(engine, "device", "")) if engine else None,
         "capabilities": ["generate", "multi-image", "tokenize", "attention", "lora", "evaluate"],
         "ui": "/ui/",
         "docs": "/docs",
@@ -98,10 +98,10 @@ def presets() -> dict:
 
 @router.get("/v1/models", tags=["model"])
 def models(request: Request) -> dict:
-    eng = request.app.state.engine
+    engine = request.app.state.engine
     return {
-        "active": eng.model_id if eng else None,
-        "adapter": eng.adapter if eng else None,
+        "active": engine.model_id if engine else None,
+        "adapter": engine.adapter if engine else None,
         "catalog": CATALOG,
         "adapters": local_adapters(Path(request.app.state.settings.data_dir)),
     }
@@ -109,7 +109,7 @@ def models(request: Request) -> dict:
 
 @router.get("/v1/model", tags=["model"])
 def model_info(request: Request) -> dict:
-    return engine(request).info()
+    return get_engine(request).info()
 
 
 @router.put("/v1/model", tags=["model"])
@@ -123,7 +123,7 @@ async def load_model(request: Request, body: Annotated[dict, Body()]) -> dict:
     request.app.state.engine = None
     free_gpu()
     try:
-        eng = await run_in_threadpool(
+        engine = await run_in_threadpool(
             HFVLM.load,
             body["model_id"],
             body.get("device") or s.device,
@@ -131,10 +131,10 @@ async def load_model(request: Request, body: Annotated[dict, Body()]) -> dict:
             body.get("quantization") or s.quantization,
             body.get("attn_implementation") or s.attn_implementation,
         )
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(400, f"could not load {body['model_id']}: {exc}") from exc
-    request.app.state.engine = eng
-    return eng.info()
+    except Exception as error:  # noqa: BLE001
+        raise HTTPException(400, f"could not load {body['model_id']}: {error}") from error
+    request.app.state.engine = engine
+    return engine.info()
 
 
 @router.delete("/v1/model", status_code=204, tags=["model"])
@@ -148,24 +148,24 @@ def unload_model(request: Request) -> Response:
 @router.put("/v1/adapter", tags=["model"])
 async def load_adapter(request: Request, body: Annotated[dict, Body()]) -> dict:
     """Attach a LoRA adapter (``{"name": ...}``) or detach it (``{"name": null}``)."""
-    eng = engine(request)
-    if not isinstance(eng, HFVLM):
+    engine = get_engine(request)
+    if not isinstance(engine, HFVLM):
         raise HTTPException(400, "adapters need a Hugging Face model")
     name = body.get("name")
 
     def run():
         from peft import PeftModel
 
-        if eng.adapter:
-            eng.model = eng.model.unload()
-            eng.adapter = None
+        if engine.adapter:
+            engine.model = engine.model.unload()
+            engine.adapter = None
         if name:
             path = Path(request.app.state.settings.data_dir) / "adapters" / Path(name).name
             if not (path / "adapter_config.json").exists():
                 raise HTTPException(404, f"adapter {name!r} not found")
-            eng.model = PeftModel.from_pretrained(eng.model, str(path)).eval()
-            eng.adapter = Path(name).name
-        return {"adapter": eng.adapter}
+            engine.model = PeftModel.from_pretrained(engine.model, str(path)).eval()
+            engine.adapter = Path(name).name
+        return {"adapter": engine.adapter}
 
     return await run_in_threadpool(run)
 
@@ -179,12 +179,14 @@ async def generate(
     params: Annotated[str | None, Form(description="JSON decoding parameters")] = None,
     sequence: Annotated[bool, Form(description="Pictures are consecutive moments")] = False,
 ) -> dict:
-    eng = engine(request)
-    pics = await read_images(request, images)
+    engine = get_engine(request)
+    pictures = await read_images(request, images)
     try:
-        return await run_in_threadpool(eng.generate, pics, prompt, system or None, parse_params(params), sequence)
-    except (EngineError, ValueError) as exc:
-        raise _err(exc) from exc
+        return await run_in_threadpool(
+            engine.generate, pictures, prompt, system or None, parse_params(params), sequence
+        )
+    except (EngineError, ValueError) as error:
+        raise _http_error(error) from error
 
 
 @router.post("/v1/compare-decoding", tags=["generate"])
@@ -197,8 +199,8 @@ async def compare_decoding(
     sequence: Annotated[bool, Form()] = False,
 ) -> list[dict]:
     """Same picture and prompt, several decoding strategies side by side."""
-    eng = engine(request)
-    pics = await read_images(request, images)
+    engine = get_engine(request)
+    pictures = await read_images(request, images)
     sets = json.loads(configs)
     if not isinstance(sets, list) or not 1 <= len(sets) <= 6:
         raise HTTPException(422, "configs must be a list of 1 to 6 parameter sets")
@@ -206,7 +208,7 @@ async def compare_decoding(
     def run():
         out = []
         for p in sets:
-            result = eng.generate(pics, prompt, system or None, parse_params(json.dumps(p)), sequence)
+            result = engine.generate(pictures, prompt, system or None, parse_params(json.dumps(p)), sequence)
             out.append({"config": p, **{k: result[k] for k in ("text", "new_tokens", "latency_ms", "tokens_per_s")}})
         return out
 
@@ -221,9 +223,9 @@ async def tokenize(
     system: Annotated[str | None, Form()] = None,
     sequence: Annotated[bool, Form()] = False,
 ) -> dict:
-    eng = engine(request)
-    pics = await read_images(request, images)
-    return await run_in_threadpool(eng.tokenize, pics, prompt, system or None, sequence)
+    engine = get_engine(request)
+    pictures = await read_images(request, images)
+    return await run_in_threadpool(engine.tokenize, pictures, prompt, system or None, sequence)
 
 
 @router.post("/v1/attention", tags=["inspect"])
@@ -237,12 +239,12 @@ async def attention(
 ) -> dict:
     """Where the answer looks: attention mass on image vs text tokens per layer
     and head, and a heat map over the image tokens."""
-    eng = engine(request)
-    pics = await read_images(request, images)
+    engine = get_engine(request)
+    pictures = await read_images(request, images)
     try:
-        return await run_in_threadpool(eng.attention, pics, prompt, answer or None, system or None, sequence)
-    except (EngineError, ValueError) as exc:
-        raise _err(exc) from exc
+        return await run_in_threadpool(engine.attention, pictures, prompt, answer or None, system or None, sequence)
+    except (EngineError, ValueError) as error:
+        raise _http_error(error) from error
 
 
 # --- instruction datasets ---------------------------------------------------------
@@ -255,16 +257,16 @@ def datasets(request: Request) -> list[dict]:
 def dataset(request: Request, name: str) -> dict:
     try:
         return {"name": name, "items": request.app.state.datasets.items(name)}
-    except (LookupError, ValueError) as exc:
-        raise _err(exc) from exc
+    except (LookupError, ValueError) as error:
+        raise _http_error(error) from error
 
 
 @router.delete("/v1/datasets/{name}", status_code=204, tags=["datasets"])
 def delete_dataset(request: Request, name: str) -> Response:
     try:
         request.app.state.datasets.delete(name)
-    except (LookupError, ValueError) as exc:
-        raise _err(exc) from exc
+    except (LookupError, ValueError) as error:
+        raise _http_error(error) from error
     return Response(status_code=204)
 
 
@@ -277,27 +279,27 @@ async def add_item(
     system: Annotated[str | None, Form()] = None,
     images: Annotated[list[UploadFile] | None, File()] = None,
 ) -> dict:
-    pics = await read_images(request, images)
+    pictures = await read_images(request, images)
     try:
-        return request.app.state.datasets.add(name, pics, instruction, response, system)
-    except (LookupError, ValueError) as exc:
-        raise _err(exc) from exc
+        return request.app.state.datasets.add(name, pictures, instruction, response, system)
+    except (LookupError, ValueError) as error:
+        raise _http_error(error) from error
 
 
 @router.patch("/v1/datasets/{name}/items/{item_id}", tags=["datasets"])
 def update_item(request: Request, name: str, item_id: str, body: Annotated[dict, Body()]) -> dict:
     try:
         return request.app.state.datasets.update(name, item_id, body)
-    except (LookupError, ValueError) as exc:
-        raise _err(exc) from exc
+    except (LookupError, ValueError) as error:
+        raise _http_error(error) from error
 
 
 @router.delete("/v1/datasets/{name}/items/{item_id}", status_code=204, tags=["datasets"])
 def delete_item(request: Request, name: str, item_id: str) -> Response:
     try:
         request.app.state.datasets.remove(name, item_id)
-    except (LookupError, ValueError) as exc:
-        raise _err(exc) from exc
+    except (LookupError, ValueError) as error:
+        raise _http_error(error) from error
     return Response(status_code=204)
 
 
@@ -305,8 +307,8 @@ def delete_item(request: Request, name: str, item_id: str) -> Response:
 def dataset_image(request: Request, name: str, file: str):
     try:
         return FileResponse(request.app.state.datasets.image_path(name, file))
-    except (LookupError, ValueError) as exc:
-        raise _err(exc) from exc
+    except (LookupError, ValueError) as error:
+        raise _http_error(error) from error
 
 
 # --- jobs ------------------------------------------------------------------------------
@@ -319,16 +321,16 @@ def jobs(request: Request) -> list[dict]:
 def job(request: Request, job_id: str) -> dict:
     try:
         return request.app.state.jobs.get(job_id).as_dict()
-    except LookupError as exc:
-        raise _err(exc) from exc
+    except LookupError as error:
+        raise _http_error(error) from error
 
 
 @router.post("/v1/jobs/{job_id}/cancel", tags=["jobs"])
 def cancel(request: Request, job_id: str) -> dict:
     try:
         j = request.app.state.jobs.get(job_id)
-    except LookupError as exc:
-        raise _err(exc) from exc
+    except LookupError as error:
+        raise _http_error(error) from error
     j.cancelled.set()
     return j.as_dict(full=False)
 
@@ -336,30 +338,30 @@ def cancel(request: Request, job_id: str) -> dict:
 @router.post("/v1/jobs", status_code=201, tags=["jobs"])
 def start_job(request: Request, body: Annotated[dict, Body()]) -> dict:
     """``{"kind": "lora" | "evaluate", "dataset": "...", ...options}``"""
-    eng = engine(request)
+    engine = get_engine(request)
     state = request.app.state
     kind, name = body.get("kind"), body.get("dataset")
     try:
         state.datasets.items(name or "")
-    except (LookupError, ValueError) as exc:
-        raise _err(exc) from exc
+    except (LookupError, ValueError) as error:
+        raise _http_error(error) from error
     run_name = (body.get("name") or f"{name}-{kind}").replace("/", "_")
     if kind == "lora":
-        if not isinstance(eng, HFVLM):
+        if not isinstance(engine, HFVLM):
             raise HTTPException(400, "LoRA needs a Hugging Face model")
         out = Path(state.settings.data_dir) / "adapters" / run_name
 
-        def fn(job):
-            return training.lora_finetune(job, eng, state.datasets, name, body, out, state.settings)
+        def run_job(job):
+            return training.lora_finetune(job, engine, state.datasets, name, body, out, state.settings)
 
     elif kind == "evaluate":
 
-        def fn(job):
-            return training.evaluate(job, eng, state.datasets, name, body)
+        def run_job(job):
+            return training.evaluate(job, engine, state.datasets, name, body)
 
     else:
         raise HTTPException(422, "kind must be lora or evaluate")
     try:
-        return state.jobs.start(kind, run_name, body, fn).as_dict(full=False)
-    except JobBusy as exc:
-        raise HTTPException(409, str(exc)) from exc
+        return state.jobs.start(kind, run_name, body, run_job).as_dict(full=False)
+    except JobBusy as error:
+        raise HTTPException(409, str(error)) from error

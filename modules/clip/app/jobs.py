@@ -43,7 +43,7 @@ class Job:
             raise InterruptedError("cancelled")
 
     def as_dict(self, full: bool = True) -> dict:
-        d = {
+        summary = {
             "id": self.id,
             "kind": self.kind,
             "name": self.name,
@@ -54,8 +54,8 @@ class Job:
             "result": self.result,
         }
         if full:
-            d.update(config=self.config, history=self.history, log="\n".join(self.log_lines[-200:]))
-        return d
+            summary.update(config=self.config, history=self.history, log="\n".join(self.log_lines[-200:]))
+        return summary
 
     def save(self) -> None:
         self.root.mkdir(parents=True, exist_ok=True)
@@ -68,15 +68,15 @@ class JobRunner:
         self.jobs: dict[str, Job] = {}
         self._lock = threading.Lock()
         if root.is_dir():  # finished jobs from earlier runs
-            for p in sorted(root.glob("*.json")):
+            for job_file in sorted(root.glob("*.json")):
                 try:
-                    d = json.loads(p.read_text())
+                    saved = json.loads(job_file.read_text())
                 except json.JSONDecodeError:
                     continue
-                job = Job(d["id"], d["kind"], d["name"], d.get("config") or {}, root)
-                job.status = "interrupted" if d["status"] == "running" else d["status"]
-                job.result, job.error = d.get("result"), d.get("error")
-                job.history, job.created = d.get("history") or [], d.get("created", 0)
+                job = Job(saved["id"], saved["kind"], saved["name"], saved.get("config") or {}, root)
+                job.status = "interrupted" if saved["status"] == "running" else saved["status"]
+                job.result, job.error = saved.get("result"), saved.get("error")
+                job.history, job.created = saved.get("history") or [], saved.get("created", 0)
                 self.jobs[job.id] = job
 
     def running(self) -> Job | None:
@@ -95,8 +95,8 @@ class JobRunner:
                 job.status = "completed"
             except InterruptedError:
                 job.status = "cancelled"
-            except Exception as exc:  # noqa: BLE001 - reported to the UI
-                job.error = f"{type(exc).__name__}: {exc}"
+            except Exception as error:  # noqa: BLE001 - reported to the UI
+                job.error = f"{type(error).__name__}: {error}"
                 job.log(traceback.format_exc())
                 job.status = "failed"
             job.save()

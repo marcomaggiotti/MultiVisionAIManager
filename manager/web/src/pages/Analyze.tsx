@@ -149,17 +149,8 @@ function Frame({ frame, src, many }: { frame: any; src: string; many: boolean })
       <div className="grid g2">
         <ImageOverlay src={src} detections={dets} highlight={mainIndex >= 0 ? mainIndex : undefined} />
         <div>
-          {dancer?.pose ? (
-            <>
-              <h3 style={{ marginTop: 0 }}>Pose cues</h3>
-              {dancer.pose.cues.map((c: any, k: number) => (
-                <div key={k} className="small">• {c.cue}{c.steps.length ? <> → <b>{c.steps.join(", ")}</b></> : null} <span className="muted">({c.confidence})</span></div>
-              ))}
-              <h3>Joint angles (as seen by the camera)</h3>
-              <table><tbody>
-                {ANGLES.map((a) => <tr key={a}><td className="small">{a.replace(/_/g, " ")}</td><td className="mono">{num(dancer.pose.angles[a], 0)}°</td></tr>)}
-              </tbody></table>
-            </>
+          {dancer?.evaluation || dancer?.pose ? (
+            <DancerSummary evaluation={dancer.evaluation} legacyPose={dancer.pose} />
           ) : (
             <p className="small muted">
               {!frame.detections ? "YOLO not run." : frame.people === 0 ? "No dancer detected: try a lower detection confidence."
@@ -176,5 +167,37 @@ function Frame({ frame, src, many }: { frame: any; src: string; many: boolean })
         </div>
       </div>
     </Card>
+  );
+}
+
+/** Movement recognition, corrections and angles of the dancer in one picture.
+ * ``legacyPose`` displays analyses saved before the shared evaluation existed. */
+function DancerSummary({ evaluation, legacyPose }: { evaluation?: any; legacyPose?: any }) {
+  const angles = evaluation?.angles ?? legacyPose?.angles ?? {};
+  return (
+    <>
+      {evaluation ? (
+        <>
+          <h3 style={{ marginTop: 0 }}>Movement recognition</h3>
+          {evaluation.candidates.length === 0 && <p className="small muted">No ballet movement recognised (a transition).</p>}
+          <Bars items={evaluation.candidates.map((c: any) => ({ label: c.step, value: c.score }))} max={1} format={(v) => pct(v)} />
+          <h3>Technique</h3>
+          {evaluation.feedback.map((f: any, k: number) => (
+            <div key={k} className={`fb ${f.status}`}><i />{f.message}{f.target ? <span className="muted"> · target {f.target}</span> : null}</div>
+          ))}
+        </>
+      ) : (
+        <>
+          <h3 style={{ marginTop: 0 }}>Pose cues</h3>
+          {legacyPose.cues.map((c: any, k: number) => (
+            <div key={k} className="small">• {c.cue}{c.steps.length ? <> → <b>{c.steps.join(", ")}</b></> : null} <span className="muted">({c.confidence})</span></div>
+          ))}
+        </>
+      )}
+      <h3>Joint angles (as seen by the camera)</h3>
+      <table><tbody>
+        {ANGLES.map((name) => <tr key={name}><td className="small">{name.replace(/_/g, " ")}</td><td className="mono">{num(angles[name], 0)}°</td></tr>)}
+      </tbody></table>
+    </>
   );
 }

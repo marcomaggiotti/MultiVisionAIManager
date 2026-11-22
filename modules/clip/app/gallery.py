@@ -127,13 +127,19 @@ class Galleries:
             path = self._dir(name)
             items = self.items(name)
             index = path / "index.npz"
+            item_ids = [item["id"] for item in items]
             if index.exists():
-                data = np.load(index, allow_pickle=False)
-                if str(data["model"]) == encoder.model_id and list(data["ids"]) == [i["id"] for i in items]:
-                    return items, data["emb"]
-            emb = encoder.embed_images(self.load_images(name, items)) if items else np.zeros((0, 1))
+                cached = np.load(index, allow_pickle=False)
+                # Older cache files (another key name) are simply recomputed.
+                if (
+                    "embeddings" in cached.files
+                    and str(cached["model"]) == encoder.model_id
+                    and list(cached["ids"]) == item_ids
+                ):
+                    return items, cached["embeddings"]
+            embeddings = encoder.embed_images(self.load_images(name, items)) if items else np.zeros((0, 1))
             np.savez(
-                index, emb=emb, ids=np.array([i["id"] for i in items]),
+                index, embeddings=embeddings, ids=np.array(item_ids),
                 model=np.array(encoder.model_id),
             )  # fmt: skip
-            return items, emb
+            return items, embeddings

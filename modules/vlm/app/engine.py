@@ -53,6 +53,10 @@ DEFAULT_PARAMS = {
 }
 
 
+# Options set for the token-score inspection, not chosen by the user.
+INTERNAL_GENERATE_OPTIONS = {"output_logits", "return_dict_in_generate"}
+
+
 class EngineError(ValueError):
     pass
 
@@ -109,11 +113,16 @@ def grid_for(length: int, hint: tuple[int, int] | None = None) -> tuple[int, int
     return (side, side) if side * side == length else None
 
 
+CONNECTOR_NAME_PARTS = ("connector", "multi_modal_projector", "merger", "mlp1", "modality_projection")
+VISION_NAME_PARTS = ("vision_model", "vision_tower", "visual.", "vision_encoder")
+
+
 def _group(name: str) -> str:
-    n = name.lower()
-    if any(k in n for k in ("connector", "multi_modal_projector", "merger", "mlp1", "modality_projection")):
+    """Which part of a VLM a parameter or module belongs to: vision, connector or language."""
+    lowered = name.lower()
+    if any(part in lowered for part in CONNECTOR_NAME_PARTS):
         return "connector"
-    if any(k in n for k in ("vision_model", "vision_tower", "visual.", "vision_encoder")):
+    if any(part in lowered for part in VISION_NAME_PARTS):
         return "vision"
     return "language"
 
@@ -169,10 +178,10 @@ class HFVLM(VLMEngine):
 
     @property
     def image_token_id(self) -> int | None:
-        cfg = self.model.config
+        config = self.model.config
         for attr in ("image_token_id", "image_token_index"):
-            if isinstance(getattr(cfg, attr, None), int):
-                return getattr(cfg, attr)
+            if isinstance(getattr(config, attr, None), int):
+                return getattr(config, attr)
         token = getattr(self.processor, "image_token", None)
         if token:
             return self.tokenizer.convert_tokens_to_ids(token)
@@ -199,35 +208,37 @@ class HFVLM(VLMEngine):
     def generate(self, images, prompt, system=None, params=None, sequence=False) -> dict:
         import torch
 
-        p = {**DEFAULT_PARAMS, **(params or {})}
-        gen = {
-            "max_new_tokens": int(p["max_new_tokens"]),
-            "do_sample": bool(p["do_sample"]),
-            "num_beams": int(p["num_beams"]),
-            "repetition_penalty": float(p["repetition_penalty"]),
+        decoding = {**DEFAULT_PARAMS, **(params or {})}
+        generation_options = {
+            "max_new_tokens": int(decoding["max_new_tokens"]),
+            "do_sample": bool(decoding["do_sample"]),
+            "num_beams": int(decoding["num_beams"]),
+            "repetition_penalty": float(decoding["repetition_penalty"]),
         }
-        if gen["do_sample"]:
-            gen.update(temperature=float(p["temperature"]), top_p=float(p["top_p"]), top_k=int(p["top_k"]))
-        if int(p["no_repeat_ngram_size"]) > 0:
-            gen["no_repeat_ngram_size"] = int(p["no_repeat_ngram_size"])
-        if gen["num_beams"] > 1:
-            gen["length_penalty"] = float(p["length_penalty"])
-        scores = bool(p["return_scores"]) and gen["num_beams"] == 1
-        if scores:
-            gen.update(output_logits=True, return_dict_in_generate=True)
+        if generation_options["do_sample"]:
+            generation_options.update(
+                temperature=float(decoding["temperature"]), top_p=float(decoding["top_p"]), top_k=int(decoding["top_k"])
+            )
+        if int(decoding["no_repeat_ngram_size"]) > 0:
+            generation_options["no_repeat_ngram_size"] = int(decoding["no_repeat_ngram_size"])
+        if generation_options["num_beams"] > 1:
+            generation_options["length_penalty"] = float(decoding["length_penalty"])
+        return_token_scores = bool(decoding["return_scores"]) and generation_options["num_beams"] == 1
+        if return_token_scores:
+            generation_options.update(output_logits=True, return_dict_in_generate=True)
 
         with self._lock, torch.inference_mode():
             inputs = self.inputs(build_messages(images, prompt, system, sequence))
             n_in = inputs["input_ids"].shape[1]
-            torch.manual_seed(int(p["seed"]))
+            torch.manual_seed(int(decoding["seed"]))
             start = time.perf_counter()
-            out = self.model.generate(**inputs, **gen)
+            out = self.model.generate(**inputs, **generation_options)
             elapsed = time.perf_counter() - start
-            seqs = out.sequences if scores else out
+            seqs = out.sequences if return_token_scores else out
             new = seqs[0, n_in:]
             text = self.processor.decode(new, skip_special_tokens=True).strip()
             steps = []
-            if scores:
+            if return_token_scores:
                 for i, logits in enumerate(out.logits):
                     probs = torch.softmax(logits[0].float(), dim=-1)
                     top = torch.topk(probs, 5)
@@ -251,7 +262,7 @@ class HFVLM(VLMEngine):
             "new_tokens": n_new,
             "latency_ms": round(elapsed * 1000, 1),
             "tokens_per_s": round(n_new / elapsed, 1) if elapsed > 0 else None,
-            "params": {k: v for k, v in gen.items() if k not in {"output_logits", "return_dict_in_generate"}},
+            "params": {key: value for key, value in generation_options.items() if key not in INTERNAL_GENERATE_OPTIONS},
             "steps": steps,
             "model": self.model_id,
             "adapter": self.adapter,
@@ -309,11 +320,11 @@ class HFVLM(VLMEngine):
         if impl != "eager":
             try:
                 self.model.set_attn_implementation("eager")
-            except Exception as exc:  # noqa: BLE001
+            except Exception as error:  # noqa: BLE001
                 raise EngineError(
                     f"attention weights need eager attention (model uses {impl}); "
                     "reload the model with attn_implementation=eager"
-                ) from exc
+                ) from error
         with self._lock, torch.inference_mode():
             prompt_inputs = self.inputs(build_messages(images, prompt, system, sequence))
             n_prompt = prompt_inputs["input_ids"].shape[1]
@@ -373,8 +384,8 @@ class HFVLM(VLMEngine):
                     "heat": heat_values,
                 }
             )
-        text_scores = [(i, float(heat[i])) for i in range(n_prompt) if not bool(mask[i])]
-        text_scores.sort(key=lambda x: -x[1])
+        text_scores = [(position, float(heat[position])) for position in range(n_prompt) if not bool(mask[position])]
+        text_scores.sort(key=lambda scored: scored[1], reverse=True)
         return {
             "answer": answer,
             "layers": per_layer,
@@ -384,7 +395,8 @@ class HFVLM(VLMEngine):
             # (SmolVLM's global view) and the only block for the others.
             "overlay_block": len(blocks) - 1 if len(images) == 1 and blocks else (0 if blocks else None),
             "top_text_tokens": [
-                {"token": self.tokenizer.decode([ids[i]]), "weight": round(w, 4)} for i, w in text_scores[:15]
+                {"token": self.tokenizer.decode([ids[position]]), "weight": round(weight, 4)}
+                for position, weight in text_scores[:15]
             ],
             "prompt_tokens": n_prompt,
             "answer_tokens": len(queries),
@@ -392,9 +404,9 @@ class HFVLM(VLMEngine):
 
     # --- architecture ------------------------------------------------------------------
     def info(self) -> dict:
-        cfg = self.model.config
-        vision = getattr(cfg, "vision_config", None)
-        text = getattr(cfg, "text_config", None) or cfg
+        config = self.model.config
+        vision = getattr(config, "vision_config", None)
+        text = getattr(config, "text_config", None) or config
         groups = {"vision": 0, "connector": 0, "language": 0}
         for name, p in self.model.named_parameters():
             groups[_group(name)] += p.numel()
@@ -406,15 +418,15 @@ class HFVLM(VLMEngine):
             ),
             None,
         )
-        cross = "mllama" in cfg.model_type or bool(getattr(text, "cross_attention_layers", None))
+        cross = "mllama" in config.model_type or bool(getattr(text, "cross_attention_layers", None))
         return {
             "model_id": self.model_id,
             "architecture": type(self.model).__name__,
-            "model_type": cfg.model_type,
+            "model_type": config.model_type,
             "device": str(self.model.device),
             "dtype": str(self.model.dtype).replace("torch.", ""),
             "quantization": self.quantization,
-            "attn_implementation": getattr(cfg, "_attn_implementation", None),
+            "attn_implementation": getattr(config, "_attn_implementation", None),
             "adapter": self.adapter,
             "fusion": "cross-attention layers in the language model" if cross
             else "early fusion: projected image tokens in the language model's sequence",

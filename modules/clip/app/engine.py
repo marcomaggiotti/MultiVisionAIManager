@@ -154,8 +154,8 @@ class HFEncoder(Encoder):
         return float(bias.item()) if bias is not None else 0.0
 
     def info(self) -> dict:
-        cfg = self.model.config
-        v, t = cfg.vision_config, cfg.text_config
+        config = self.model.config
+        v, t = config.vision_config, config.text_config
         image_size = getattr(v, "image_size", 224)
         patch = getattr(v, "patch_size", 32)
         return {
@@ -163,7 +163,7 @@ class HFEncoder(Encoder):
             "family": self.family,
             "device": str(self.device),
             "dtype": str(self.dtype).replace("torch.", ""),
-            "embed_dim": getattr(cfg, "projection_dim", None) or getattr(v, "hidden_size", None),
+            "embed_dim": getattr(config, "projection_dim", None) or getattr(v, "hidden_size", None),
             "logit_scale": round(self.logit_scale, 3),
             "temperature": round(1 / self.logit_scale, 5),
             "logit_bias": round(self.logit_bias, 3),

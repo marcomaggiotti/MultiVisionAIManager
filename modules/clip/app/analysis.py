@@ -45,8 +45,8 @@ def label_embeddings(
     """Embeddings of every (template, label) prompt: shape (T, L, d)."""
     names = [(descriptions or {}).get(label, label) for label in labels]
     prompts = [t.format(n) if "{}" in t else f"{t} {n}" for t in templates for n in names]
-    emb = encoder.embed_texts(prompts)
-    return emb.reshape(len(templates), len(labels), -1)
+    embeddings = encoder.embed_texts(prompts)
+    return embeddings.reshape(len(templates), len(labels), -1)
 
 
 def zero_shot(
@@ -134,8 +134,8 @@ def projection(image_emb: np.ndarray, text_emb: np.ndarray, method: str = "pca")
     if len(image_emb) and len(text_emb):
         gap = {
             "centroid_distance": round(float(np.linalg.norm(image_emb.mean(0) - text_emb.mean(0))), 4),
-            "mean_image_image_cosine": round(float(_mean_offdiag(image_emb @ image_emb.T)), 4),
-            "mean_text_text_cosine": round(float(_mean_offdiag(text_emb @ text_emb.T)), 4),
+            "mean_image_image_cosine": round(float(_mean_off_diagonal(image_emb @ image_emb.T)), 4),
+            "mean_text_text_cosine": round(float(_mean_off_diagonal(text_emb @ text_emb.T)), 4),
             "mean_image_text_cosine": round(float((image_emb @ text_emb.T).mean()), 4),
         }
     return {
@@ -146,8 +146,9 @@ def projection(image_emb: np.ndarray, text_emb: np.ndarray, method: str = "pca")
     }
 
 
-def _mean_offdiag(m: np.ndarray) -> float:
-    n = len(m)
-    if n < 2:
+def _mean_off_diagonal(matrix: np.ndarray) -> float:
+    """Mean similarity between different items (the diagonal is each item with itself)."""
+    size = len(matrix)
+    if size < 2:
         return float("nan")
-    return (m.sum() - np.trace(m)) / (n * n - n)
+    return (matrix.sum() - np.trace(matrix)) / (size * size - size)
