@@ -33,7 +33,8 @@ export function CameraPanel({ frame, overlays, mirror }: { frame: Recorded | nul
     if (frame && canvas.current) void renderFrame(canvas.current, frame, overlays, !mirror); // mirrored text would be unreadable
   }, [frame, overlays, mirror]);
   return (
-    <Panel letter="A" title="Camera · pose overlay">
+    <Panel letter="A" title="Camera · pose overlay"
+      corner={frame?.result.adjusted ? <span className="adjusted-tag" title="Keypoints adjusted by hand">✎ adjusted</span> : undefined}>
       {frame ? <canvas ref={canvas} style={{ objectFit: "contain", transform: mirror ? "scaleX(-1)" : undefined }} />
         : <div className="empty">Start the camera, a video or a picture sequence.<br />Each frame is analysed in real time.</div>}
     </Panel>

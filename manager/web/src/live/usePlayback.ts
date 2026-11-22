@@ -5,13 +5,11 @@
 //   paused frame can be inspected, stepped through and snapshotted;
 // * not capturing: Play/Pause replays the recorded frames at their pace × speed.
 import { useCallback, useEffect, useState } from "react";
-import { PlayerActions, PlayerState, frameIndexAtTime } from "./Timeline";
+import { PlayerState } from "./Timeline";
 import { Recorded } from "./types";
 
 const MIN_REPLAY_DELAY_MS = 15;
 const MAX_REPLAY_DELAY_MS = 1000;
-const ARROW_STEP_SECONDS = 1;
-const SHIFT_ARROW_STEP_SECONDS = 3;
 
 type LiveControls = {
   frames: Recorded[];
@@ -22,7 +20,7 @@ type LiveControls = {
   resumeCapture: () => void;
 };
 
-export function usePlayback(live: LiveControls, openSnapshot: (frame: Recorded) => void) {
+export function usePlayback(live: LiveControls) {
   const { frames, isCapturing, capturePaused } = live;
   const [following, setFollowing] = useState(true);
   const [selectedIndex, setSelectedIndex] = useState(-1);
@@ -82,46 +80,11 @@ export function usePlayback(live: LiveControls, openSnapshot: (frame: Recorded) 
     setReplaying(true);
   }, [isCapturing, capturePaused, replaying, shownIndex, frames.length, follow, holdCurrentFrame]);
 
-  const snapshot = useCallback(() => {
-    if (!shownFrame) return;
-    holdCurrentFrame();
-    openSnapshot(shownFrame);
-  }, [shownFrame, holdCurrentFrame, openSnapshot]);
-
-  // Keyboard shortcuts (ignored while typing in a field).
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement;
-      if (target.closest("input, textarea, select, [contenteditable=true], .modal")) return;
-      const currentTime = shownFrame?.result.t ?? 0;
-      const stepSeconds = event.shiftKey ? SHIFT_ARROW_STEP_SECONDS : ARROW_STEP_SECONDS;
-      const handlers: Record<string, () => void> = {
-        " ": togglePlay,
-        ArrowLeft: () => seek(frameIndexAtTime(frames, currentTime - stepSeconds)),
-        ArrowRight: () => seek(frameIndexAtTime(frames, currentTime + stepSeconds)),
-        ",": () => seek(shownIndex - 1),
-        ".": () => seek(shownIndex + 1),
-        Home: () => seek(0),
-        End: () => seek(frames.length - 1),
-        s: snapshot,
-        S: snapshot,
-      };
-      const handler = handlers[event.key];
-      if (handler) {
-        event.preventDefault();
-        handler();
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [togglePlay, seek, snapshot, frames, shownIndex, shownFrame]);
-
   const player: PlayerState = {
     playing: isCapturing ? !capturePaused : replaying,
     speed,
     following,
   };
-  const actions: PlayerActions = { onTogglePlay: togglePlay, onSeek: seek, onSpeed: setSpeed, onFollow: follow, onSnapshot: snapshot };
 
   const reset = () => {
     setSelectedIndex(-1);
@@ -132,5 +95,7 @@ export function usePlayback(live: LiveControls, openSnapshot: (frame: Recorded) 
     setFollowing(true);
     setReplaying(false);
   };
-  return { shownIndex, shownFrame, player, actions, reset, startFollowing, seek };
+  return { shownIndex, shownFrame, player, togglePlay, seek, setSpeed, follow, holdCurrentFrame, reset, startFollowing };
 }
+
+export type Playback = ReturnType<typeof usePlayback>;

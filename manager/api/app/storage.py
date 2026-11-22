@@ -16,6 +16,8 @@ from pathlib import Path
 
 from PIL import Image
 
+from app.live.adjustments import KeypointAdjustment
+
 STORED_PICTURE_MAX_SIDE = 1600
 
 SCHEMA = [
@@ -23,6 +25,9 @@ SCHEMA = [
     "id TEXT PRIMARY KEY, created REAL, title TEXT, frames INTEGER, top TEXT, result TEXT)",
     "CREATE TABLE IF NOT EXISTS live_sessions ("
     "id TEXT PRIMARY KEY, created REAL, title TEXT, duration REAL, frames INTEGER, data TEXT)",
+    "CREATE TABLE IF NOT EXISTS keypoint_adjustments ("
+    "media_key TEXT, source_time REAL, keypoints TEXT, box TEXT, image TEXT, updated REAL, "
+    "PRIMARY KEY (media_key, source_time))",
 ]
 
 
@@ -154,3 +159,39 @@ class HistoryStore:
             deleted = connection.execute("DELETE FROM live_sessions WHERE id = ?", (session_id,))
         if not deleted.rowcount:
             raise RecordNotFoundError(f"session {session_id!r} not found")
+
+    # --- keypoint adjustments -------------------------------------------------------
+    def list_adjustments(self, media_key: str) -> list[KeypointAdjustment]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT source_time, keypoints, box, image FROM keypoint_adjustments "
+                "WHERE media_key = ? ORDER BY source_time",
+                (media_key,),
+            ).fetchall()
+        return [
+            KeypointAdjustment(media_key, source_time, json.loads(keypoints), json.loads(box), json.loads(image))
+            for source_time, keypoints, box, image in rows
+        ]
+
+    def save_adjustment(self, adjustment: KeypointAdjustment) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT OR REPLACE INTO keypoint_adjustments VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    adjustment.media_key,
+                    round(adjustment.source_time, 3),
+                    json.dumps(adjustment.keypoints),
+                    json.dumps(adjustment.box),
+                    json.dumps(adjustment.image),
+                    time.time(),
+                ),
+            )
+
+    def delete_adjustment(self, media_key: str, source_time: float) -> None:
+        with self._connect() as connection:
+            deleted = connection.execute(
+                "DELETE FROM keypoint_adjustments WHERE media_key = ? AND source_time = ?",
+                (media_key, round(source_time, 3)),
+            )
+        if not deleted.rowcount:
+            raise RecordNotFoundError(f"no adjustment at {source_time} s for {media_key!r}")

@@ -6,13 +6,22 @@ export const SKELETON: [number, number][] = [
   [5, 7], [6, 8], [7, 9], [8, 10], [0, 1], [0, 2], [1, 3], [2, 4],
 ];
 
+// COCO-17 keypoint names, in the order the pose model returns them.
+export const KEYPOINT_NAMES = [
+  "nose", "left eye", "right eye", "left ear", "right ear", "left shoulder", "right shoulder",
+  "left elbow", "right elbow", "left wrist", "right wrist", "left hip", "right hip",
+  "left knee", "right knee", "left ankle", "right ankle",
+];
+
 export type Box = { x1: number; y1: number; x2: number; y2: number };
 export type Det = { label: string; confidence: number; box: Box; keypoints?: number[][] | null };
 
 /** Picture with boxes, labels and pose skeletons drawn on top; optional heat map. */
-export function ImageOverlay({ src, detections = [], highlight, heat, minVisibility = 0.5, maxHeight = 520 }: {
+export function ImageOverlay({ src, detections = [], highlight, highlightKeypoint, heat, minVisibility = 0.5, maxHeight = 520 }: {
   src: string; detections?: Det[]; highlight?: number; heat?: { grid: [number, number]; values: number[] } | null;
-  minVisibility?: number; maxHeight?: number;
+  /** Ring and name around one keypoint of the highlighted (or only) detection. */
+  highlightKeypoint?: number | null;
+  minVisibility?: number; maxHeight?: number | string;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
@@ -64,8 +73,20 @@ export function ImageOverlay({ src, detections = [], highlight, heat, minVisibil
         }
         ctx.globalAlpha = 1;
       });
+      const focused = detections[highlight ?? 0];
+      const point = highlightKeypoint != null ? focused?.keypoints?.[highlightKeypoint] : null;
+      if (point) {
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = lw;
+        ctx.beginPath();
+        ctx.arc(point[0], point[1], lw * 5, 0, 2 * Math.PI);
+        ctx.stroke();
+        ctx.font = `${Math.round(lw * 6 + 6)}px sans-serif`;
+        ctx.fillStyle = "#ffffff";
+        ctx.fillText(KEYPOINT_NAMES[highlightKeypoint!], point[0] + lw * 7, point[1] - lw * 2);
+      }
     };
     img.src = src;
-  }, [src, detections, highlight, heat, minVisibility]);
+  }, [src, detections, highlight, highlightKeypoint, heat, minVisibility]);
   return <canvas ref={canvas} className="overlay" style={{ maxHeight }} />;
 }

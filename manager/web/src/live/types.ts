@@ -28,8 +28,23 @@ export type FrameResult = {
   image: { width: number; height: number } | null;
   latency_ms: { yolo: number | null; total: number };
   model?: string;
+  source_time?: number | null;
+  /** True when a saved keypoint adjustment replaced the model's keypoints. */
+  adjusted?: boolean;
 };
-export type Recorded = { result: FrameResult; blob: Blob };
+export type Recorded = {
+  result: FrameResult;
+  blob: Blob;
+  /** The analysed video or picture (file name and size); null for the camera. */
+  mediaKey: string | null;
+  /** Seconds inside the video (0 for a picture); null for the camera. */
+  sourceTime: number | null;
+  /** The model's own dancer and evaluation, kept when the keypoints are adjusted by hand. */
+  beforeAdjustment?: Pick<FrameResult, "dancer" | "evaluation">;
+};
+
+/** Identifies a file across sessions: the same video gives the same key. */
+export const mediaKeyOf = (file: File) => `${file.name}|${file.size}`;
 export type Vocabulary = {
   poses: Record<string, { family: string; description: string; targets: Record<string, string> }>;
   families: Record<string, string[]>;

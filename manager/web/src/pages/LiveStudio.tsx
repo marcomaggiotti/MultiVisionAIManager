@@ -1,13 +1,15 @@
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { api, form, json, post } from "../api";
 import { useLoad } from "../hooks";
 import { Slider } from "../components/ui";
 import { BodyMap, CameraPanel, PoseCard, Skeleton3D } from "../live/panels";
-import { Timeline } from "../live/Timeline";
-import { Source, useLive } from "../live/useLive";
-import { usePlayback } from "../live/usePlayback";
+import { PlayerActions, Timeline } from "../live/Timeline";
+import { Source } from "../live/useLive";
+import { useLiveSession } from "../live/LiveSessionContext";
+import { usePlayerKeyboard } from "../live/usePlayerKeyboard";
 import { Overlay } from "../live/drawing";
 import { SnapshotDialog } from "../live/SnapshotDialog";
+import { FrameAdjuster } from "../live/FrameAdjuster";
 import { Recorded, STATUS_COLOR, Status, Vocabulary, fmtTime, stepColor } from "../live/types";
 
 const PART_LABEL: Record<string, string> = {
@@ -17,13 +19,11 @@ const PART_LABEL: Record<string, string> = {
 const FAMILY_LABEL: Record<string, string> = { positions: "Positions", barre: "Barre", adagio: "Adagio", turns: "Turns", allegro: "Allegro", jumps: "Jumps" };
 
 export default function LiveStudio() {
-  const live = useLive();
+  // Kept by the app while other tabs are shown: the video goes on where it was.
+  const { live, playback, source, setSource, files, setFiles, overlays, setOverlays, mirror, setMirror } = useLiveSession();
   const vocab = useLoad(() => api<Vocabulary>("/api/ballet/vocabulary"), []).data;
-  const [source, setSource] = useState<Source>("camera");
-  const [files, setFiles] = useState<File[]>([]);
-  const [overlays, setOverlays] = useState<Set<Overlay>>(new Set<Overlay>(["skeleton", "angles"]));
-  const [mirror, setMirror] = useState(false);
   const [snapshotFrame, setSnapshotFrame] = useState<Recorded | null>(null);
+  const [adjustedFrameIndex, setAdjustedFrameIndex] = useState<number | null>(null);
   const [dancer, setDancer] = useState(() => { try { return localStorage.getItem("dancer") ?? ""; } catch { return ""; } });
   const [settings, setSettings] = useState(live.settings);
   const [busy, setBusy] = useState<string | null>(null);
@@ -33,12 +33,26 @@ export default function LiveStudio() {
   const frames = live.frames;
   const latest = frames.length ? frames[frames.length - 1] : null;
   const isLive = live.status === "live";
-  const playback = usePlayback(
-    { frames, version: live.version, isCapturing: isLive, capturePaused: live.capturePaused,
-      pauseCapture: live.pauseCapture, resumeCapture: live.resumeCapture },
-    setSnapshotFrame,
-  );
   const frame = playback.shownFrame;
+
+  const { holdCurrentFrame, shownIndex } = playback;
+  const openSnapshot = useCallback(() => {
+    if (!frame) return;
+    holdCurrentFrame();
+    setSnapshotFrame(frame);
+  }, [frame, holdCurrentFrame]);
+  const openKeypointAdjustment = useCallback(() => {
+    if (!frame?.result.dancer) return;
+    holdCurrentFrame();
+    setAdjustedFrameIndex(shownIndex);
+  }, [frame, holdCurrentFrame, shownIndex]);
+  const shortcuts = useMemo(() => ({ snapshot: openSnapshot, adjustKeypoints: openKeypointAdjustment }), [openSnapshot, openKeypointAdjustment]);
+  const dialogOpen = snapshotFrame !== null || adjustedFrameIndex !== null;
+  usePlayerKeyboard(frames, playback, shortcuts, !dialogOpen);
+  const playerActions: PlayerActions = {
+    onTogglePlay: playback.togglePlay, onSeek: playback.seek, onSpeed: playback.setSpeed, onFollow: playback.follow,
+    onSnapshot: openSnapshot, onAdjustKeypoints: openKeypointAdjustment,
+  };
 
   const held = useMemo(() => {
     const out: Record<string, number> = {};
@@ -108,6 +122,8 @@ export default function LiveStudio() {
             <dt>Status</dt><dd>{isLive ? <><span className="live-dot" /> live</> : live.status}</dd>
             <dt>Speed</dt><dd>{isLive ? `${live.fps.toFixed(1)} fps` : "—"}{latest ? ` · ${latest.result.latency_ms.total} ms` : ""}</dd>
             <dt>Model</dt><dd className="mono small">{latest?.result.model?.split("/").pop() ?? "—"}</dd>
+            <dt>Adjusted</dt><dd title="Moments of this video whose keypoints were corrected by hand (applied when the video is analysed)">
+              {live.adjustedTimes.length ? `${live.adjustedTimes.length} saved moment${live.adjustedTimes.length > 1 ? "s" : ""}` : "—"}</dd>
           </div>
           <label className="field"><span>Dancer</span>
             <input type="text" value={dancer} placeholder="name" onChange={(e) => { setDancer(e.target.value); try { localStorage.setItem("dancer", e.target.value); } catch { /* private mode */ } }} />
@@ -189,8 +205,11 @@ export default function LiveStudio() {
           <PoseCard frame={frame} vocab={vocab} />
         </div>
         <Timeline frames={frames} index={playback.shownIndex} version={live.version} vocab={vocab}
-          player={playback.player} actions={playback.actions} />
+          player={playback.player} actions={playerActions} />
         {snapshotFrame && <SnapshotDialog frame={snapshotFrame} overlays={overlays} onClose={() => setSnapshotFrame(null)} />}
+        {adjustedFrameIndex !== null && frames[adjustedFrameIndex] && (
+          <FrameAdjuster frames={frames} index={adjustedFrameIndex} onFrameChange={live.updateFrame} onClose={() => setAdjustedFrameIndex(null)} />
+        )}
       </div>
 
       {/* ---------- right ---------- */}

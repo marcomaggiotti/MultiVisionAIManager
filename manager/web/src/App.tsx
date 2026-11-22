@@ -8,6 +8,7 @@ import Analyze from "./pages/Analyze";
 import YoloStudio from "./pages/YoloStudio";
 import ClipStudio from "./pages/ClipStudio";
 import VlmStudio from "./pages/VlmStudio";
+import { LiveSessionProvider, useLiveSession } from "./live/LiveSessionContext";
 
 const NAV = [
   { to: "/", label: "Live studio" },
@@ -21,6 +22,21 @@ const NAV = [
 const STATUS_COLOR: Record<string, string> = { online: "var(--good)", starting: "var(--warn)", offline: "var(--muted)" };
 
 export default function App() {
+  return (
+    <LiveSessionProvider>
+      <Shell />
+    </LiveSessionProvider>
+  );
+}
+
+/** Shown next to "Live studio" while the session runs behind another tab. */
+function LiveIndicator() {
+  const { live } = useLiveSession();
+  if (live.status !== "live") return null;
+  return <span className="live-dot" title={live.capturePaused ? "Live session paused" : "Live session running"} style={{ marginLeft: 6, opacity: live.capturePaused ? 0.5 : 1 }} />;
+}
+
+function Shell() {
   const modules = useLoad(() => api<any[]>("/api/modules"), [], 8000);
   const wide = useLocation().pathname === "/";
   return (
@@ -28,7 +44,7 @@ export default function App() {
       <header className="topbar">
         <div className="brand"><span className="logo">✦</span>MultiVision <span className="muted" style={{ fontWeight: 400 }}>Ballet</span></div>
         <nav className="nav">
-          {NAV.map((n) => <NavLink key={n.to} to={n.to} end={n.to === "/"}>{n.label}</NavLink>)}
+          {NAV.map((n) => <NavLink key={n.to} to={n.to} end={n.to === "/"}>{n.label}{n.to === "/" && <LiveIndicator />}</NavLink>)}
         </nav>
         <span className="spacer" />
         <select className="pill" style={{ width: "auto" }} defaultValue="ballet" title="Discipline">

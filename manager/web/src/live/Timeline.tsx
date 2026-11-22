@@ -34,6 +34,9 @@ function Track({ kind, frames, index, onSeek, vocab, version }: {
         if (s && s !== prev && x(i) >= freeFrom) { ctx.fillText(s, x(i) + 3, H * 0.25 - 3); freeFrom = x(i) + ctx.measureText(s).width + 10; }
         prev = s;
       });
+      // keypoints adjusted by hand: a small mark under the track
+      ctx.fillStyle = "#ffb547";
+      frames.forEach((f, i) => { if (f.result.adjusted) ctx.fillRect(x(i) - 1.5, H * 0.8, 3, H * 0.16); });
     } else if (kind === "motion") {
       const values = frames.map((f) => f.result.motion ?? 0);
       const top = Math.max(0.02, ...values);
@@ -95,13 +98,14 @@ export type PlayerActions = {
   onSpeed: (speed: number) => void;
   onFollow: () => void;
   onSnapshot: () => void;
+  onAdjustKeypoints: () => void;
 };
 
 export function Timeline({ frames, index, vocab, version, player, actions }: {
   frames: Recorded[]; index: number; vocab: Vocabulary | null; version: number; player: PlayerState; actions: PlayerActions;
 }) {
   const rows: [TrackKind, string, string?][] = [
-    ["poses", "Poses"],
+    ["poses", "Poses", "orange: adjusted"],
     ["motion", "Motion energy"],
     ["legs", "Leg elevation", "L cyan · R green"],
     ["knees", "Knee angles", "L violet · R orange"],
@@ -119,8 +123,8 @@ export function Timeline({ frames, index, vocab, version, player, actions }: {
   );
 }
 
-/** Play / pause, jumps by frame and by 1-3 seconds, speed, snapshot.
- * Keyboard: Space play/pause · ←/→ 1 s (Shift: 3 s) · , . one frame · Home/End · S snapshot. */
+/** Play / pause, jumps by frame and by 1-3 seconds, speed, snapshot, keypoint adjustment.
+ * Keyboard: Space play/pause · ←/→ 1 s (Shift: 3 s) · , . one frame · Home/End · S snapshot · E adjust. */
 function PlayerControls({ frames, index, player, actions }: { frames: Recorded[]; index: number; player: PlayerState; actions: PlayerActions }) {
   const frameCount = frames.length;
   const currentTime = frameCount ? frames[Math.max(0, index)]?.result.t ?? 0 : 0;
@@ -156,6 +160,8 @@ function PlayerControls({ frames, index, player, actions }: { frames: Recorded[]
         onChange={(event) => actions.onSeek(Number(event.target.value))} disabled={!hasFrames} aria-label="Position" />
       <span className="mono small muted">{frameCount} frames</span>
       <button className="small" title="Snapshot of the shown frame (S)" disabled={!hasFrames} onClick={actions.onSnapshot}>📷 Snapshot</button>
+      <button className="small ghost" title="Correct the keypoints of the shown frame (E)" disabled={!frames[index]?.result.dancer}
+        onClick={actions.onAdjustKeypoints}>✎ Adjust keypoints</button>
       <button className={`small ${player.following ? "" : "ghost"}`} onClick={actions.onFollow} title="Follow the newest frame">
         {player.following ? "● following" : "Go live"}
       </button>
