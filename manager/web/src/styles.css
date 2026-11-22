@@ -168,3 +168,11 @@ details > summary { cursor: pointer; font-weight: 600; margin: 6px 0; }
 @media (max-width: 700px) {
   .compare-videos { grid-template-columns: 1fr; }
 }
+.video-picker { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.compare-player { display: flex; align-items: center; gap: 14px; padding: 10px 14px; }
+.compare-player input[type=range] { flex: 1; }
+.round-play { width: 42px; height: 42px; border-radius: 50%; padding: 0; display: grid; place-items: center; font-size: 15px; background: #ff5d8f; color: #fff; box-shadow: 0 0 14px rgba(255, 93, 143, .5); flex: none; }
+.round-play:disabled { opacity: .45; box-shadow: none; }
+.speed-chips { display: flex; gap: 2px; }
+.speed-chips button { background: transparent; color: var(--muted); padding: 4px 8px; font-size: 13px; }
+.speed-chips button.on { color: var(--fg); font-weight: 700; text-decoration: underline; text-underline-offset: 4px; }

@@ -4,41 +4,63 @@ import { Bars, ErrorBox, Slider } from "../components/ui";
 import { useLiveSession } from "../live/LiveSessionContext";
 import { drawSkeletonOverVideo, mirrorPartNames } from "../compare/drawing";
 import { ScoreGauge, ScoreHistory } from "../compare/ScoreViews";
-import { useComparison } from "../compare/useComparison";
+import { StudentSource, useComparison } from "../compare/useComparison";
 import { MATCH_COLOR, MatchStatus, MirrorMode, PART_LABEL, scoreStatus } from "../compare/types";
 
-const PLAYBACK_RATES = [0.5, 0.75, 1];
+const PLAYBACK_RATES = [0.25, 0.5, 1, 1.5, 1.75];
 const MIRROR_MODES: [MirrorMode, string, string][] = [
   ["auto", "Auto", "Pair your left with the reference's left or right, whichever matches better"],
   ["mirrored", "Mirror", "You face the video like a mirror: your left copies its right"],
   ["same", "Same side", "Your left copies its left"],
 ];
 
-/** Dance along with a reference video: the camera films the student, both dancers are
- * tracked at once and every joint angle is compared (green / yellow / red), with a live
- * match score. */
+const clock = (seconds: number) => {
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}:${(seconds - minutes * 60).toFixed(1).padStart(4, "0")}`;
+};
+
+/** A video file chooser shown as a button with the chosen file's name. */
+function VideoPicker({ file, placeholder, disabled, onChoose }: { file: File | null; placeholder: string; disabled: boolean; onChoose: (file: File) => void }) {
+  const input = useRef<HTMLInputElement>(null);
+  return (
+    <>
+      <input ref={input} type="file" accept="video/*" hidden onChange={(event) => { const chosen = event.target.files?.[0]; if (chosen) onChoose(chosen); }} />
+      <button className="small ghost video-picker" disabled={disabled} onClick={() => input.current?.click()} title={file?.name}>
+        {file ? file.name : placeholder}
+      </button>
+    </>
+  );
+}
+
+/** Compare a student with a reference video: the student is the camera (dance along) or
+ * a video of the student (compare two recordings). Both dancers are tracked at once and
+ * every joint angle is compared (green / yellow / red), with a live match score. */
 export default function Compare() {
   const { files: liveFiles, source: liveSource } = useLiveSession();
   const referenceVideo = useRef<HTMLVideoElement>(null);
   const studentVideo = useRef<HTMLVideoElement>(null);
   const referenceOverlay = useRef<HTMLCanvasElement>(null);
   const studentOverlay = useRef<HTMLCanvasElement>(null);
-  const fileInput = useRef<HTMLInputElement>(null);
   const comparison = useComparison(referenceVideo, studentVideo);
   const [referenceFile, setReferenceFile] = useState<File | null>(null);
+  const [studentSource, setStudentSource] = useState<StudentSource>("camera");
+  const [studentFile, setStudentFile] = useState<File | null>(null);
   const referenceFiles = useMemo(() => (referenceFile ? [referenceFile] : []), [referenceFile]);
+  const studentFiles = useMemo(() => (studentSource === "video" && studentFile ? [studentFile] : []), [studentSource, studentFile]);
   const [referenceUrl] = useObjectUrls(referenceFiles);
-  const [playbackRate, setPlaybackRate] = useState(1);
+  const [studentUrl] = useObjectUrls(studentFiles);
   const [mirrorView, setMirrorView] = useState(true);
+  const [offset, setOffset] = useState(0);
   const [settings, setSettings] = useState(comparison.settings);
+  const [position, setPosition] = useState({ time: 0, duration: 0 });
 
   const { status, result } = comparison;
   const active = status === "running" || status === "paused" || status === "countdown" || status === "connecting";
+  const comparing = status === "running" || status === "paused";
   const pose = result?.comparison;
   const parts = pose?.parts ?? {};
   const liveVideo = liveSource === "video" ? liveFiles[0] : undefined;
-
-  useEffect(() => { if (referenceVideo.current) referenceVideo.current.playbackRate = playbackRate; }, [playbackRate, referenceUrl]);
+  const studentReady = studentSource === "camera" || !!studentFile;
 
   // Skeletons over both videos, in their match colours (redrawn on each answer and resize).
   useEffect(() => {
@@ -47,22 +69,33 @@ export default function Compare() {
         drawSkeletonOverVideo(referenceOverlay.current, referenceVideo.current, result?.reference ?? null, pose?.mirrored ? mirrorPartNames(parts) : parts);
       }
       // once stopped the camera goes on: its last skeleton would no longer fit
-      const studentTracked = status === "running" || status === "paused" ? result?.student ?? null : null;
+      const studentTracked = comparing || studentSource === "video" ? result?.student ?? null : null;
       if (studentOverlay.current && studentVideo.current) drawSkeletonOverVideo(studentOverlay.current, studentVideo.current, studentTracked, parts);
     };
     draw();
     window.addEventListener("resize", draw);
     return () => window.removeEventListener("resize", draw);
-  }, [result, status]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [result, status, studentSource]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const updateSetting = <K extends keyof typeof settings>(key: K, value: (typeof settings)[K]) => {
     setSettings((current) => ({ ...current, [key]: value }));
     comparison.configure({ [key]: value });
   };
-  const chooseReference = (file: File | undefined) => {
-    if (!file) return;
-    setReferenceFile(file);
-    comparison.setError(null);
+  const chooseStudentSource = (source: StudentSource) => {
+    if (source === studentSource) return;
+    if (source === "video") comparison.stopCamera();
+    setStudentSource(source);
+    setMirrorView(source === "camera"); // a camera is shown like a mirror, a recording as it is
+  };
+  const changeOffset = (seconds: number) => {
+    setOffset(seconds);
+    comparison.setStudentOffset(seconds);
+  };
+  const start = () => { if (referenceFile) void comparison.start(referenceFile, studentSource); };
+  const togglePlay = () => {
+    if (status === "running") comparison.pause();
+    else if (status === "paused") comparison.resume();
+    else if (!active) start();
   };
   const correctionOf = (part: string) => pose?.corrections.find((correction) => correction.part === part)?.message;
   const summary = comparison.summary;
@@ -70,41 +103,55 @@ export default function Compare() {
   return (
     <div className="compare">
       <div className="glass toolbar">
+        <b>You</b>
+        <div className="seg">
+          <button className={studentSource === "camera" ? "on" : ""} disabled={active} onClick={() => chooseStudentSource("camera")}>◉ Camera</button>
+          <button className={studentSource === "video" ? "on" : ""} disabled={active} onClick={() => chooseStudentSource("video")}>▶ Video</button>
+        </div>
+        {studentSource === "camera"
+          ? (comparison.cameraOn
+            ? <button className="small ghost" disabled={active} onClick={comparison.stopCamera}>Turn off</button>
+            : <button className="small" onClick={comparison.startCamera}>Turn on</button>)
+          : <VideoPicker file={studentFile} placeholder="Choose your video…" disabled={active} onChoose={(file) => { setStudentFile(file); comparison.setError(null); }} />}
+        <button className={`small ${mirrorView ? "" : "ghost"}`} onClick={() => setMirrorView(!mirrorView)} title="Show the student like a studio mirror">Mirror view</button>
+        <span className="divider" />
         <b>Reference</b>
-        <input ref={fileInput} type="file" accept="video/*" hidden onChange={(event) => chooseReference(event.target.files?.[0])} />
-        <button className="small ghost" disabled={active} onClick={() => fileInput.current?.click()}
-          style={{ maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {referenceFile ? referenceFile.name : "Choose a video…"}
-        </button>
+        <VideoPicker file={referenceFile} placeholder="Choose a video…" disabled={active} onChoose={(file) => { setReferenceFile(file); comparison.setError(null); }} />
         {liveVideo && liveVideo !== referenceFile && (
-          <button className="small ghost" disabled={active} onClick={() => chooseReference(liveVideo)} title="The video chosen in the live studio">
+          <button className="small ghost" disabled={active} onClick={() => setReferenceFile(liveVideo)} title="The video chosen in the live studio">
             Use {liveVideo.name}
           </button>
         )}
-        <span className="divider" />
-        <b>Camera</b>
-        {comparison.cameraOn
-          ? <button className="small ghost" disabled={active} onClick={comparison.stopCamera}>Turn off</button>
-          : <button className="small" onClick={comparison.startCamera}>◉ Turn on</button>}
-        <button className={`small ${mirrorView ? "" : "ghost"}`} onClick={() => setMirrorView(!mirrorView)} title="Show the camera like a studio mirror">Mirror view</button>
-        <span className="divider" />
-        <label className="small muted">Speed</label>
-        <select value={playbackRate} onChange={(event) => setPlaybackRate(Number(event.target.value))} title="Play the reference slower to practise" style={{ width: "auto" }}>
-          {PLAYBACK_RATES.map((rate) => <option key={rate} value={rate}>×{rate}</option>)}
-        </select>
+        {studentSource === "video" && (
+          <>
+            <span className="divider" />
+            <label className="small muted" title="Line the two videos up: the student's video is this many seconds ahead of the reference">Your video starts at</label>
+            <input type="number" step={0.1} value={offset} onChange={(event) => changeOffset(Number(event.target.value) || 0)} aria-label="Student video offset (s)" style={{ width: 80 }} />
+            <span className="small muted">s</span>
+          </>
+        )}
         <span style={{ flex: 1 }} />
-        {status === "running" && <button onClick={comparison.pause}>❚❚ Pause</button>}
-        {status === "paused" && <button onClick={comparison.resume}>▶ Resume</button>}
-        {(status === "running" || status === "paused") && <button className="ghost" onClick={comparison.restart} title="Back to the start of the reference, scoring from zero">⟲ Restart</button>}
+        {comparing && <button className="ghost" onClick={comparison.restart} title="Back to the start of both videos, scoring from zero">⟲ Restart</button>}
         {active
-          ? <button className="danger" onClick={comparison.stop} disabled={status === "countdown" || status === "connecting"}>■ Stop</button>
-          : <button className="success" disabled={!referenceFile} onClick={() => referenceFile && comparison.start(referenceFile)}>● Start comparing</button>}
+          ? <button className="danger" onClick={comparison.stop} disabled={!comparing}>■ Stop</button>
+          : <button className="success" disabled={!referenceFile || !studentReady} onClick={start}>● Start comparing</button>}
       </div>
       <ErrorBox error={comparison.error} />
 
       <div className="compare-main">
         <div className="col">
           <div className="compare-videos">
+            <div className="vpanel compare-panel">
+              <div className="tag"><b>S</b>You · {studentSource === "camera" ? "camera" : studentFile?.name ?? "video"}</div>
+              <div className="corner">{result?.student.movement && <span className="movement-tag">{result.student.movement}</span>}</div>
+              <div className={`compare-stage ${mirrorView ? "mirror" : ""}`}>
+                <video ref={studentVideo} src={studentSource === "video" ? studentUrl : undefined} playsInline muted preload="auto" />
+                <canvas ref={studentOverlay} />
+              </div>
+              {studentSource === "camera" && !comparison.cameraOn && <div className="empty">Turn on the camera and step back until your whole body is in the picture.</div>}
+              {studentSource === "video" && !studentFile && <div className="empty">Choose a video of the student dancing the same sequence.</div>}
+              {status === "countdown" && <div className="countdown">{comparison.countdown}</div>}
+            </div>
             <div className="vpanel compare-panel">
               <div className="tag"><b>R</b>Reference{referenceFile ? ` · ${referenceFile.name}` : ""}</div>
               <div className="corner">
@@ -113,20 +160,25 @@ export default function Compare() {
               </div>
               <div className="compare-stage">
                 {referenceUrl && <video ref={referenceVideo} src={referenceUrl} playsInline preload="auto"
-                  onLoadedData={(event) => { event.currentTarget.playbackRate = playbackRate; }} />}
+                  onLoadedMetadata={(event) => setPosition({ time: event.currentTarget.currentTime, duration: event.currentTarget.duration })}
+                  onTimeUpdate={(event) => setPosition({ time: event.currentTarget.currentTime, duration: event.currentTarget.duration })} />}
                 <canvas ref={referenceOverlay} />
               </div>
               {!referenceFile && <div className="empty">Choose the reference video: the teacher, or a dancer to copy.</div>}
             </div>
-            <div className="vpanel compare-panel">
-              <div className="tag"><b>S</b>You · camera</div>
-              <div className="corner">{result?.student.movement && <span className="movement-tag">{result.student.movement}</span>}</div>
-              <div className={`compare-stage ${mirrorView ? "mirror" : ""}`}>
-                <video ref={studentVideo} playsInline muted />
-                <canvas ref={studentOverlay} />
-              </div>
-              {!comparison.cameraOn && <div className="empty">Turn on the camera and step back until your whole body is in the picture.</div>}
-              {status === "countdown" && <div className="countdown">{comparison.countdown}</div>}
+          </div>
+          <div className="glass compare-player">
+            <button className="round-play" onClick={togglePlay} disabled={!referenceFile || !studentReady || status === "countdown" || status === "connecting"}
+              aria-label={status === "running" ? "Pause" : "Play"} title={active ? "Pause / play both" : "Start comparing"}>
+              {status === "running" ? "❚❚" : "▶"}
+            </button>
+            <span className="mono small">{clock(position.time)} / {clock(position.duration || 0)}</span>
+            <input type="range" min={0} max={position.duration || 0} step={0.04} value={position.time} disabled={!referenceFile}
+              onChange={(event) => comparison.seek(Number(event.target.value))} aria-label="Position in the reference" />
+            <div className="speed-chips" role="group" aria-label="Speed">
+              {PLAYBACK_RATES.map((rate) => (
+                <button key={rate} className={comparison.playbackRate === rate ? "on" : ""} onClick={() => comparison.setPlaybackRate(rate)}>{rate}x</button>
+              ))}
             </div>
           </div>
           <div className="compare-details">

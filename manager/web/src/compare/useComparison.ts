@@ -35,8 +35,12 @@ function pairMessage(reference: ArrayBuffer, student: ArrayBuffer): Uint8Array {
   return message;
 }
 
-/** Real-time comparison of the student (camera) with a reference video: both pictures
- * are sent together, the manager tracks both dancers and compares their joint angles. */
+export type StudentSource = "camera" | "video";
+
+/** Real-time comparison of the student (the camera, or a video of the student) with a
+ * reference video: both pictures are sent together, the manager tracks both dancers and
+ * compares their joint angles. Two videos play in sync: same speed, same seek, and the
+ * student's video starts ``studentOffset`` seconds in (to line the two up). */
 export function useComparison(referenceVideo: RefObject<HTMLVideoElement>, studentVideo: RefObject<HTMLVideoElement>) {
   const [status, setStatus] = useState<ComparisonStatus>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -54,6 +58,13 @@ export function useComparison(referenceVideo: RefObject<HTMLVideoElement>, stude
   const referenceCanvas = useRef(document.createElement("canvas"));
   const studentCanvas = useRef(document.createElement("canvas"));
   const cameraStream = useRef<MediaStream | null>(null);
+  /** The student is a video file (not the camera): it plays, pauses and seeks with the reference. */
+  const studentIsVideo = () => {
+    const video = studentVideo.current;
+    return !!video && !video.srcObject && !!video.getAttribute("src");
+  };
+  const studentOffset = useRef(0);
+  const [playbackRate, setPlaybackRateState] = useState(1);
 
   const startCamera = useCallback(async () => {
     setError(null);
@@ -126,6 +137,7 @@ export function useComparison(referenceVideo: RefObject<HTMLVideoElement>, stude
   const finish = useCallback(async (finalStatus: ComparisonStatus) => {
     running.current = false;
     referenceVideo.current?.pause();
+    if (studentIsVideo()) studentVideo.current?.pause();
     send({ type: "summary" });
     await sleep(300); // let the summary arrive
     socket.current?.close();
@@ -143,7 +155,7 @@ export function useComparison(referenceVideo: RefObject<HTMLVideoElement>, stude
         await sleep(PAUSED_POLL_MS);
         continue;
       }
-      if (reference.ended) break;
+      if (reference.ended || (studentIsVideo() && student.ended)) break;
       const startedAt = performance.now();
       const referenceTime = reference.currentTime;
       const [referenceJpeg, studentJpeg] = await Promise.all([grabJpeg(reference, referenceCanvas.current), grabJpeg(student, studentCanvas.current)]);
@@ -170,13 +182,17 @@ export function useComparison(referenceVideo: RefObject<HTMLVideoElement>, stude
   };
 
   /** Connect, count down (time to get in position), then play the reference and compare. */
-  const start = async (referenceFile: File) => {
+  const start = async (referenceFile: File, studentSource: StudentSource) => {
     setError(null);
     setSummary(null);
     setResult(null);
     scoreHistory.current = [];
-    if (!cameraStream.current) await startCamera();
-    if (!cameraStream.current) return;
+    if (studentSource === "camera" && !cameraStream.current) await startCamera();
+    if (studentSource === "camera" && !cameraStream.current) return;
+    if (studentSource === "video" && !studentIsVideo()) {
+      setError("Choose the student's video.");
+      return;
+    }
     setStatus("connecting");
     try {
       socket.current = await connect();
@@ -188,14 +204,22 @@ export function useComparison(referenceVideo: RefObject<HTMLVideoElement>, stude
     send({ type: "config", ...settings.current });
     send({ type: "reference", media_key: mediaKeyOf(referenceFile) });
     const reference = referenceVideo.current!;
+    const student = studentVideo.current!;
     reference.pause();
     if (reference.ended) reference.currentTime = 0;
-    setStatus("countdown");
-    for (let second = COUNTDOWN_SECONDS; second > 0; second--) {
-      setCountdown(second);
-      await sleep(1000);
+    applyRate(playbackRate);
+    if (studentIsVideo()) {
+      student.pause();
+      alignStudent();
+    } else {
+      // time to get in position in front of the camera
+      setStatus("countdown");
+      for (let second = COUNTDOWN_SECONDS; second > 0; second--) {
+        setCountdown(second);
+        await sleep(1000);
+      }
+      setCountdown(0);
     }
-    setCountdown(0);
     running.current = true;
     paused.current = false;
     setStatus("running");
@@ -204,6 +228,7 @@ export function useComparison(referenceVideo: RefObject<HTMLVideoElement>, stude
         reference.muted = true; // browsers may refuse to start a video with sound on their own
         return reference.play();
       });
+      if (studentIsVideo()) await student.play();
     } catch {
       setError("The browser cannot play this reference video (try an MP4 with H.264 video).");
       await finish("idle");
@@ -212,20 +237,48 @@ export function useComparison(referenceVideo: RefObject<HTMLVideoElement>, stude
     void compareLoop();
   };
 
+  /** The student's video at the reference's time plus the offset. */
+  const alignStudent = () => {
+    const reference = referenceVideo.current, student = studentVideo.current;
+    if (!studentIsVideo() || !reference || !student) return;
+    student.currentTime = Math.max(0, reference.currentTime + studentOffset.current);
+  };
+  const applyRate = (rate: number) => {
+    if (referenceVideo.current) referenceVideo.current.playbackRate = rate;
+    if (studentIsVideo() && studentVideo.current) studentVideo.current.playbackRate = rate;
+  };
+  const setPlaybackRate = (rate: number) => {
+    setPlaybackRateState(rate);
+    applyRate(rate);
+  };
+  const setStudentOffset = (seconds: number) => {
+    studentOffset.current = seconds;
+    alignStudent();
+  };
+  /** Move both videos (the reference to ``seconds``, the student's video along with it). */
+  const seek = (seconds: number) => {
+    const reference = referenceVideo.current;
+    if (!reference) return;
+    reference.currentTime = Math.max(0, Math.min(reference.duration || 0, seconds));
+    alignStudent();
+  };
+
   const pause = () => {
     paused.current = true;
     referenceVideo.current?.pause();
+    if (studentIsVideo()) studentVideo.current?.pause();
     setStatus("paused");
   };
   const resume = () => {
     paused.current = false;
+    alignStudent(); // they drift apart a little while playing
     void referenceVideo.current?.play();
+    if (studentIsVideo()) void studentVideo.current?.play();
     setStatus("running");
   };
   /** Back to the start of the reference, scoring from zero. */
   const restart = () => {
-    const reference = referenceVideo.current;
-    if (reference) reference.currentTime = 0;
+    seek(0);
     scoreHistory.current = [];
     send({ type: "restart" });
     setResult(null);
@@ -241,5 +294,6 @@ export function useComparison(referenceVideo: RefObject<HTMLVideoElement>, stude
   return {
     status, error, setError, countdown, result, summary, fps, cameraOn, scoreHistory: scoreHistory.current,
     startCamera, stopCamera, configure, settings: settings.current, start, pause, resume, restart, stop,
+    seek, playbackRate, setPlaybackRate, setStudentOffset,
   };
 }

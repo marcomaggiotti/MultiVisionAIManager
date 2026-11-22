@@ -83,8 +83,14 @@ persist are written to the feedback log, with the time, so you can jump back to 
 
 ## Compare: dance along with a reference video
 
-The **Compare** tab puts a reference video (the teacher, or any dancer to copy) next to
-the camera filming the student, and compares the two in real time.
+The **Compare** tab puts the student (left) next to a reference video (right: the
+teacher, or any dancer to copy) and compares the two in real time. The student is either
+the **camera** (dance along) or a **video** of the student (compare two recordings).
+
+- **Two videos play in sync**: one round play/pause button, one seek bar and one speed
+  (0.25x, 0.5x, 1x, 1.5x, 1.75x) drive both; *Your video starts at* shifts the student's
+  video (in seconds) to line up the two starts. Each picture pair is analysed while they
+  play, so the slower the speed, the more poses are compared.
 
 - **Both dancers are tracked at once**: every tick, the reference video's picture and the
   camera's picture go to the manager in one WebSocket message (`/api/compare/ws`), YOLO
@@ -104,8 +110,8 @@ the camera filming the student, and compares the two in real time.
   force a pairing.
 - **Delay**: a student follows a little late, so each pose is compared with the reference
   poses of the last 0.6 s (adjustable) and the best match is kept; the delay is shown.
-- A 3-2-1 countdown leaves time to get in position; the reference can play at ×0.5 or
-  ×0.75 to practise, and be restarted. Keypoint adjustments saved for the reference video
+- With the camera, a 3-2-1 countdown leaves time to get in position; slow speeds help to
+  practise, and Restart goes back to the start of both. Keypoint adjustments saved for the reference video
   are used for it too.
 - Film the student from the same side as the reference: angles are 2-D.
 
