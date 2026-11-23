@@ -4,6 +4,13 @@ export type Release = { version: string; date: string; title: string; changes: s
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.12.2", date: "2026-11-23", title: "Fix: CLIP and VLM models load again",
+    changes: [
+      "CLIP and VLM images now use PyTorch 2.8 (CUDA 12.6): recent transformers refused the old PyTorch 2.5 (“AutoModel requires PyTorch >= 2.6”).",
+      "RTX 50-series GPUs: set TORCH_BASE_IMAGE=pytorch/pytorch:2.8.0-cuda12.8-cudnn9-runtime in .env.",
+    ],
+  },
+  {
     version: "0.12.1", date: "2026-11-23", title: "Fix: Compare in Docker",
     changes: ["Compare could not connect in the Docker setup (“cannot reach the manager's compare endpoint”): the web server now forwards every WebSocket (live studio and Compare)."],
   },

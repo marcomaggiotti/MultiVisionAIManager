@@ -1,6 +1,10 @@
-# VLM module. GPU by default (CUDA 12.4 PyTorch); for CPU only build with
+# VLM module. GPU by default (PyTorch 2.8, CUDA 12.6: NVIDIA driver 560 or newer).
+# RTX 50-series (Blackwell) GPUs need CUDA 12.8:
+#   --build-arg BASE=pytorch/pytorch:2.8.0-cuda12.8-cudnn9-runtime
+# CPU only:
 #   --build-arg BASE=python:3.12-slim --build-arg TORCH_INDEX=https://download.pytorch.org/whl/cpu
-ARG BASE=pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime
+# Recent transformers releases refuse PyTorch older than 2.6 ("AutoModel requires PyTorch >= 2.6").
+ARG BASE=pytorch/pytorch:2.8.0-cuda12.6-cudnn9-runtime
 FROM ${BASE}
 
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 \
