@@ -4,6 +4,10 @@ export type Release = { version: string; date: string; title: string; changes: s
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.12.1", date: "2026-11-23", title: "Fix: Compare in Docker",
+    changes: ["Compare could not connect in the Docker setup (“cannot reach the manager's compare endpoint”): the web server now forwards every WebSocket (live studio and Compare)."],
+  },
+  {
     version: "0.12.0", date: "2026-11-23", title: "Snapshot library",
     changes: [
       "Every snapshot taken in the live studio is saved in the library (the clean frame, with its video, time, movement and corrections).",
