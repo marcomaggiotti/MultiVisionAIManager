@@ -478,6 +478,14 @@ needed, idle stop for the VLM). The YOLO module is the
 included as a git submodule in `modules/yolo` (`--recursive` clones it; otherwise run
 `git submodule update --init` once, or use `./start.sh`, which does it).
 
+### GPU, PyTorch and CUDA versions
+
+The CLIP and VLM images start from `pytorch/pytorch:2.8.0-cuda12.6-cudnn9-runtime`
+(NVIDIA driver 560 or newer); recent `transformers` versions refuse PyTorch older than
+2.6. For an RTX 50-series (Blackwell) GPU, use CUDA 12.8: put
+`TORCH_BASE_IMAGE=pytorch/pytorch:2.8.0-cuda12.8-cudnn9-runtime` in `.env`, then
+`docker compose build clip vlm`.
+
 ### From a phone or tablet on the same network
 
 - Open **https://&lt;this computer's IP&gt;:3443** (find the IP with `ipconfig` on Windows,
