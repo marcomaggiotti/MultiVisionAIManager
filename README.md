@@ -53,9 +53,18 @@ persist are written to the feedback log, with the time, so you can jump back to 
   adjustment is stored for that moment of that video (file name + size, time in the
   video; a picture is one moment). Every later analysis of the same video uses the saved
   keypoints at that moment (orange marks on the timeline; panel A shows "✎ adjusted"), so
-  recognition, counts and corrections follow your fix. The YOLO tab edits the keypoints of
-  a snapshot or a picture the same way. API: `GET/PUT/DELETE /api/keypoint-adjustments`,
+  recognition, counts and corrections follow your fix. In **YOLO · detection & pose**
+  (Inference tab), **✎ Adjust keypoints** edits the selected person right in the result
+  view (drag, or type x / y), and **✎ Place keypoints by hand** starts from a standing
+  figure when the model found nobody; saved for that picture, or for that moment of the
+  video when the picture is a snapshot. API: `GET/PUT/DELETE /api/keypoint-adjustments`,
   `POST /api/ballet/evaluate` (evaluate any 17 keypoints).
+- **✂ Cut video** (when a video file is chosen): pick the part to keep (start / end at the
+  player position, frame by frame, preview), and the manager makes a new file with ffmpeg:
+  *exact* (MP4 H.264, re-encoded, plays everywhere) or *fast* (no re-encoding, starts at a
+  keyframe). Download it, or analyse it in the live studio right away. Keypoint
+  adjustments inside the kept part are carried over to the new file. API:
+  `POST /api/videos/cut` (multipart `video`, `start`, `end`, `mode`, `name`, `media_key`).
 - The live session belongs to the app, not to the page: open the YOLO, CLIP or VLM tab
   while a video runs (a red dot next to *Live studio* shows it is still running) and come
   back to the same video, frames and player position.
@@ -71,6 +80,120 @@ persist are written to the feedback log, with the time, so you can jump back to 
   `GET/PATCH/DELETE /api/live/sessions[/<id>]`.
 - Angles are measured in the picture (2-D): film from the side for arabesque, attitude
   and jumps, from the front for positions and plié.
+
+## Compare: dance along with a reference video
+
+The **Compare** tab puts the student (left) next to a reference video (right: the
+teacher, or any dancer to copy) and compares the two in real time. The student is either
+the **camera** (dance along) or a **video** of the student (compare two recordings).
+
+- **Two videos play in sync**: one round play/pause button, one seek bar and one speed
+  (0.25x, 0.5x, 1x, 1.5x, 1.75x) drive both; *Your video starts at* shifts the student's
+  video (in seconds) to line up the two starts. Each picture pair is analysed while they
+  play, so the slower the speed, the more poses are compared.
+
+- **Both dancers are tracked at once**: every tick, the reference video's picture and the
+  camera's picture go to the manager in one WebSocket message (`/api/compare/ws`), YOLO
+  pose finds the 17 body landmarks of each (the two requests run in parallel), and each
+  side gets its own keypoint smoothing.
+- **Joint angles are compared**: knees, elbows, leg and arm elevation, torso tilt and leg
+  spread. A joint is **green** within 15° of the reference, **yellow** within 30°, **red**
+  beyond (both adjustable). The skeleton over each video is drawn in those colours, body
+  part by body part, with a correction for each wrong part ("Lift the right leg higher (you
+  70°, reference 95°)") and a table of every angle.
+- **Live match score**: each joint scores 100 % within the green band, falling to 0 at
+  twice the yellow one; the match is their weighted mean (legs count most), smoothed for
+  display, with the average, the share of time "in step" (≥ 80 %) and a score timeline.
+  When the reference ends (or on Stop) a summary lists the body parts most often red.
+- **Mirror**: a student facing the video copies it like a mirror (their left arm copies
+  the reference's right). *Auto* pairs the sides that match best; *Mirror* and *Same side*
+  force a pairing.
+- **Delay**: a student follows a little late, so each pose is compared with the reference
+  poses of the last 0.6 s (adjustable) and the best match is kept; the delay is shown.
+- With the camera, a 3-2-1 countdown leaves time to get in position; slow speeds help to
+  practise, and Restart goes back to the start of both. Keypoint adjustments saved for the reference video
+  are used for it too.
+- Film the student from the same side as the reference: angles are 2-D.
+
+Code: `app/ballet/comparison.py` (the rules), `app/live/comparison.py` (the session:
+two trackers, delay matching, statistics), `app/api/compare.py` (WebSocket), and
+`web/src/pages/Compare.tsx` with `web/src/compare/`.
+
+## Video library
+
+The **Library** tab keeps videos in the manager (`<data>/videos/`, records in SQLite), so
+they are uploaded once and chosen anywhere:
+
+- **Add** videos (button or drag and drop, several at once, with a progress bar); each is
+  checked with `ffprobe` (duration, size) and gets a thumbnail.
+- **Watch**, **rename**, add **notes** (dancer, class, what to look at), **download**,
+  **delete**, **search** names and notes.
+- **✂ Cut** a part into a new library video (it remembers which video it was cut from);
+  the cut dialog of the live studio can also keep its result in the library.
+- **Open** a video in the **Live studio**, as the reference of **Compare**, or in the
+  **VLM**; the 📚 buttons of the live studio and Compare choose from the library too
+  (library videos stream, with seeking, from the manager).
+- Keypoint adjustments follow a video (same name and size) and its cuts.
+
+API: `GET/POST /api/videos`, `GET/PATCH/DELETE /api/videos/{id}`, `/file` (byte ranges),
+`/thumbnail`, `/frames?start&end&count` (evenly spread pictures), `POST /api/videos/{id}/cut`.
+
+## Admin: AI workflow builder and LangChain agents
+
+The **Admin** tab builds AI workflows across all the modules, graphically, and runs them
+with **LangGraph**; its **agents** are **LangChain** agents that choose the manager's
+abilities as tools.
+
+```
+Admin builder (React)          manager (FastAPI)
+  graph of nodes  ──JSON──▶  FlowGraph ── compile ──▶ LangGraph StateGraph
+                                              │  node        = catalog executor
+                                              │  arrows      = conditional edges
+                                              │  Ask the user = interrupt() + checkpointer (resume)
+                                              ▼
+            ┌─────────────── executors ───────────────┐
+            │ YOLO pose · ballet rules · CLIP · VLM   │
+            │ Agent node ─▶ LangChain agent            │
+            │   model: VlmChatModel (local) | cloud    │
+            │   tools: 7 StructuredTools               │
+            └──────────────────────────────────────────┘
+                 │ HTTP                     ▲
+                 ▼                          │
+         YOLO · CLIP · VLM modules (Docker services)
+```
+
+- **AI workflow builder**: a palette by category (*Input*, *Vision*: YOLO pose, ballet
+  evaluation, CLIP classification; *Language*: ask the VLM; *Agents*: LangChain agent;
+  *Logic*: compose text, decision, ask the user; *Output*: end). The node types come from
+  the manager's **catalog** (`GET /api/flows/catalog`): each declares its fields, and the
+  inspector draws its form from them (texts with variables, sliders, frame choice, saved
+  prompts, the agent's model and tools…). Arrows carry conditions (yes / no / contains /
+  number > … / otherwise) tried in order; any node can branch, loops are allowed. Check,
+  save, save as, export / import JSON; template *Ballet coach*: YOLO checks a dancer is
+  there → ballet rules and CLIP name the movement → you choose the depth → an agent
+  writes the coaching. *Run* shows the run live (current node, path taken, each node's
+  readings, the agent's thoughts and tool calls) and waits for your answers.
+- **How LangGraph runs it** (`app/flows/engine.py`): each flow is compiled to a
+  `StateGraph` (state: the variables, the text the arrows test); a node calls its catalog
+  executor; its arrows become one conditional edge whose router tries the conditions;
+  *Ask the user* calls `interrupt()`, the run waits, and the answer resumes it with
+  `Command(resume=…)` from the `InMemorySaver` checkpoint; `recursion_limit` stops endless
+  loops. The VLM tab's workflows run on the same engine.
+- **Agents (LangChain)** (`app/agents/`): the manager's abilities are `StructuredTool`s
+  bound to the run's frames: `frames_overview`, `detect_pose` (YOLO), `evaluate_ballet_pose`
+  (YOLO + ballet rules), `classify_movement` (CLIP), `look_at_frames` (VLM),
+  `ballet_movement_info`, `search_video_library`. The model is the **local VLM module**,
+  wrapped as a LangChain `BaseChatModel` (`VlmChatModel`: no key, nothing leaves the
+  machine), driven with the **ReAct** protocol (Thought → Action → Observation → Final
+  Answer) since small models do not call tools natively; or a **cloud model** with native
+  tool calling (`bind_tools`): set `MANAGER_AGENT_MODELS=anthropic:<model>,openai:<model>`,
+  install `pip install .[providers]` and set the API key. The *Agents* tab tries an agent on
+  a video part and shows its full trace; the *Agent* node does the same inside a workflow
+  and sees the earlier nodes' results.
+
+API: `GET /api/flows/catalog`, `GET/POST/PUT/DELETE /api/flows`, `POST /api/flows/check`,
+`POST /api/flow-runs` (+ `GET /{id}`, `POST /{id}/answer`, `POST /{id}/stop`; the VLM tab's
+`/api/workflow-runs` are the same runs), `POST /api/agents/run`.
 
 ## Architecture
 
@@ -253,6 +376,43 @@ Where each concept appears in this project:
 | Instruction tuning | *Instruction data* + *Instruction tuning*: LoRA / QLoRA, loss on the response only, optional connector training |
 | Evaluation | *Evaluation*: exact match, contains, token F1, ROUGE-L, ballet-vocabulary recall, latency |
 
+#### Describe a video, prompts, workflows (VLM tab, run by the manager)
+
+The VLM looks at pictures, so a video is **sampled**: the manager takes 1 to 16 frames
+spread evenly over the chosen part of a library video (ffmpeg) and sends them as a
+sequence, with the prompt, to the VLM module.
+
+- **Describe a video**: choose a library video, the part (from / to, or from the
+  player's position) and the number of frames, preview the frames, and describe it with
+  the default ballet prompt or a saved one. `{{input}}` in a prompt becomes "8 frames of
+  class.mp4 from 2.0 s to 6.0 s".
+- **Prompts**: a library of saved prompts (text, system prompt, length, temperature,
+  notes). Tick several to **compare** them side by side on the same frames (answers,
+  time, tokens), or **run them as a chain**, in the order ticked: each prompt can use the
+  previous answer `{{last}}`, or any earlier one `{{step1}}`, `{{step2}}`… A chain opens
+  in the workflow editor to add decisions and questions.
+- **Workflow**: a graphical editor of decision workflows. Nodes:
+  *Start* (the frames), *Ask the VLM* (a saved prompt or its own text; the answer is kept
+  in a variable), *Decision* (tests a variable), *Ask the user* (a question with choices
+  or a free answer: the run pauses and waits), *End* (the result, a text with variables).
+  After a node its arrows are tried in order and the first whose condition holds is
+  followed (*yes*, *no*, *contains*, *equals*, *starts with*, *number > / <*, *regex*,
+  *otherwise* last), so any node can branch and loops are allowed (a run stops after 60
+  steps). Drag nodes, drag from a node's ● to another to connect, edit the selected node
+  or arrow on the right, Delete to remove; *Check* lists what prevents running; save,
+  save as, export / import JSON; the *Ballet review* template recognises the movement,
+  asks you to confirm it, rates the technique and proposes exercises when the score is
+  below 6. *Run* follows the run live: the current node pulses, the path taken turns
+  green, each step shows the prompt sent, the answer and the way taken.
+
+Code: `manager/api/app/vlm/` (client, inputs, templating, conditions, documents),
+`app/api/vlm.py`, runs on the LangGraph engine of `app/flows/`; `manager/web/src/vlm/` (WorkflowCanvas,
+WorkflowInspector, RunView, PromptsStudio, DescribeVideo). API: `GET/POST/PUT/DELETE
+/api/prompts`, `POST /api/vlm/ask` (one or several prompts about a video part or
+pictures), `GET/POST/PUT/DELETE /api/workflows`, `POST /api/workflows/check`,
+`POST /api/workflow-runs`, `GET /api/workflow-runs/{id}`, `POST …/answer`, `POST …/stop`
+(the same runs as the Admin builder's).
+
 ## Ballet analysis pipeline
 
 *Ballet analysis* page, or `POST /api/analyze` with one or more pictures (in order):
@@ -337,13 +497,21 @@ modules.json                module registry (Docker)   modules.local.json   same
 start.sh                    clone the YOLO module, build, create the modules, start the manager
 manager/api/app/            hub (FastAPI)
   main.py                   app factory: shared clients, registry, store, routers
-  api/                      routers: modules (status, launch, proxy), live, analysis, knowledge
+  api/                      routers: modules (status, launch, proxy), live, compare, analysis, knowledge,
+                            adjustments, videos (library, cutting), vlm (prompts), flows (AI workflows,
+                            runs), agents
   modules/                  module registry and launchers (Docker, local process)
+  media/                    ffmpeg helpers, video library, cutting
+  vlm/                      VLM client, frames of a video, prompts, conditions, templating
+  agents/                   LangChain: capabilities, tools, VlmChatModel, agent loop (native / ReAct)
+  flows/                    AI workflows: catalog, node executors, graph, LangGraph engine
   ballet/                   keypoints, measurements, movements, recognition, feedback, motion
   live/                     real-time sessions: smoothing, movement tracking, correction log
   analysis/                 multi-module pipeline, VLM context, evidence fusion
   storage.py                history (SQLite)
-manager/web/                React app: pages/LiveStudio + live/ (panels, timeline, session hook), Analyze, Dashboard (modules), studios
+manager/web/                React app: pages/LiveStudio + live/, Compare + compare/, Library + library/,
+                            VlmStudio + vlm/ (workflow editor), Admin + admin/ (AI workflow builder,
+                            agents), Analyze, Dashboard (modules), studios
 modules/clip/               CLIP module: engine.py, analysis.py, gallery.py, training.py, static/ (own page)
 modules/vlm/                VLM module: engine.py, training.py (LoRA, evaluation), metrics.py, static/
 modules/yolo/               YOLO module = detect_image_engine (git submodule)

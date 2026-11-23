@@ -87,7 +87,7 @@ function Inference() {
   const [editing, setEditing] = useState(false);
   const { live } = useLiveSession();
   const adjustmentTarget = adjustmentTargetOf(files[0], snapshot);
-  useEffect(() => setDetections([]), [files]);
+  useEffect(() => { setDetections([]); setEditing(false); }, [files]);
   const detect = useAction(async () => {
     await api(Y("/v1/lab/runtime"), json("PUT", { iou_threshold: iou, image_size: size, max_detections: maxDet, half }));
     const q = new URLSearchParams({ classes: classes || "*", confidence: String(conf) });
@@ -111,8 +111,14 @@ function Inference() {
   const saveKeypoints = async (keypoints: number[][], image: ImageSize) => {
     if (!adjustmentTarget) return;
     const { adjustment, evaluation } = await saveAdjustment(adjustmentTarget.mediaKey, adjustmentTarget.sourceTime, keypoints, image);
-    setDetections((current) => current.map((detection, index) => (index === selectedPerson
-      ? { ...detection, confidence: 1, box: adjustment.box, keypoints: adjustment.keypoints, adjusted: true } : detection)));
+    const adjusted: PersonDetection = { label: "person", confidence: 1, box: adjustment.box, keypoints: adjustment.keypoints, adjusted: true };
+    if (selectedDetection?.keypoints?.length) {
+      setDetections((current) => current.map((detection, index) => (index === selectedPerson ? adjusted : detection)));
+    } else {
+      // placed by hand: the model found nobody (or no keypoints)
+      setDetections((current) => [...current, adjusted]);
+      setSelectedPerson(detections.length);
+    }
     updateLiveFrames({ dancer: { box: adjustment.box, confidence: 1, keypoints: adjustment.keypoints }, evaluation, adjusted: true });
   };
   const removeAdjustment = async () => {
@@ -121,7 +127,8 @@ function Inference() {
     updateLiveFrames((index) => ({ ...(live.frames[index].beforeAdjustment ?? {}), adjusted: false }));
     await detect.run();
   };
-  const selectedDetection = detections[selectedPerson];
+  const selectedDetection: PersonDetection | undefined = detections[selectedPerson];
+  const hasKeypoints = !!selectedDetection?.keypoints?.length;
   const labels = model.data ? Object.values(model.data.labels as Record<string, string>) : [];
   return (
     <div className="grid side">
@@ -142,7 +149,12 @@ function Inference() {
         <ErrorBox error={detect.error ?? runtime.error} />
       </Card>
       <Card title="Result">
-        {urls[0] ? (
+        {urls[0] && editing && adjustmentTarget ? (
+          <KeypointEditor layout="inline" imageSrc={urls[0]} keypoints={hasKeypoints ? selectedDetection!.keypoints! : null}
+            title={hasKeypoints ? `Adjust keypoints · person ${selectedPerson + 1}` : "Place keypoints by hand"}
+            note={`Saved for ${adjustmentTarget.label}: detecting it again, or analysing the video in the live studio, uses your keypoints.`}
+            onSave={saveKeypoints} onRemove={selectedDetection?.adjusted ? removeAdjustment : undefined} onClose={() => setEditing(false)} />
+        ) : urls[0] ? (
           <div className="grid result-split">
             <ZoomableView resetKey={urls[0]}>
               <ImageOverlay src={urls[0]} detections={detections} highlight={detections.length > 1 ? selectedPerson : undefined}
@@ -151,20 +163,16 @@ function Inference() {
             <div>
               <div className="row spread">
                 <h3 style={{ margin: 0 }}>Keypoints {selectedDetection?.adjusted && <span className="adjusted-tag">✎ adjusted</span>}</h3>
-                <button className="small ghost" disabled={!selectedDetection?.keypoints?.length || !adjustmentTarget} onClick={() => setEditing(true)}
-                  title="Drag the keypoints to where the joints really are; saved for this picture (or this moment of the video)">✎ Adjust keypoints</button>
+                <button className="small" disabled={!adjustmentTarget || detect.busy} onClick={() => setEditing(true)}
+                  title="Drag the keypoints to where the joints really are; saved for this picture (or this moment of the video)">
+                  {hasKeypoints ? "✎ Adjust keypoints" : "✎ Place keypoints by hand"}</button>
               </div>
               <KeypointsPanel detections={detections} selectedPerson={selectedPerson} onSelectPerson={setSelectedPerson}
                 highlightedKeypoint={highlightedKeypoint} onHighlight={setHighlightedKeypoint} />
             </div>
           </div>
         ) : <p className="muted">Choose a picture.</p>}
-        {editing && urls[0] && selectedDetection?.keypoints && adjustmentTarget && (
-          <KeypointEditor imageSrc={urls[0]} keypoints={selectedDetection.keypoints}
-            title={`Adjust keypoints · person ${selectedPerson + 1}`}
-            note={`Saved for ${adjustmentTarget.label}: detecting it again, or analysing the video in the live studio, uses your keypoints.`}
-            onSave={saveKeypoints} onRemove={selectedDetection.adjusted ? removeAdjustment : undefined} onClose={() => setEditing(false)} />
-        )}
+
         {detect.data && (
           <>
             <p className="small muted">{detect.data.inference_ms} ms · {JSON.stringify(detect.data.counts)}</p>

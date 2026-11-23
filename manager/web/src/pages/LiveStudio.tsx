@@ -10,7 +10,10 @@ import { usePlayerKeyboard } from "../live/usePlayerKeyboard";
 import { Overlay } from "../live/drawing";
 import { SnapshotDialog } from "../live/SnapshotDialog";
 import { FrameAdjuster } from "../live/FrameAdjuster";
-import { Recorded, STATUS_COLOR, Status, Vocabulary, fmtTime, stepColor } from "../live/types";
+import { VideoCutDialog } from "../live/VideoCutDialog";
+import { VideoLibraryPicker } from "../library/VideoLibraryPicker";
+import { videoAsFile } from "../library/videos";
+import { Recorded, STATUS_COLOR, Status, Vocabulary, fmtTime, mediaKeyOf, stepColor } from "../live/types";
 
 const PART_LABEL: Record<string, string> = {
   head: "Head", shoulders: "Shoulders", torso: "Torso", hips: "Hips",
@@ -24,6 +27,8 @@ export default function LiveStudio() {
   const vocab = useLoad(() => api<Vocabulary>("/api/ballet/vocabulary"), []).data;
   const [snapshotFrame, setSnapshotFrame] = useState<Recorded | null>(null);
   const [adjustedFrameIndex, setAdjustedFrameIndex] = useState<number | null>(null);
+  const [cutting, setCutting] = useState(false);
+  const [pickingFromLibrary, setPickingFromLibrary] = useState(false);
   const [dancer, setDancer] = useState(() => { try { return localStorage.getItem("dancer") ?? ""; } catch { return ""; } });
   const [settings, setSettings] = useState(live.settings);
   const [busy, setBusy] = useState<string | null>(null);
@@ -47,7 +52,16 @@ export default function LiveStudio() {
     setAdjustedFrameIndex(shownIndex);
   }, [frame, holdCurrentFrame, shownIndex]);
   const shortcuts = useMemo(() => ({ snapshot: openSnapshot, adjustKeypoints: openKeypointAdjustment }), [openSnapshot, openKeypointAdjustment]);
-  const dialogOpen = snapshotFrame !== null || adjustedFrameIndex !== null;
+  const dialogOpen = snapshotFrame !== null || adjustedFrameIndex !== null || cutting;
+  const videoFile = source === "video" ? files[0] : undefined;
+  /** The new, cut video replaces the chosen one; Start analyses it. */
+  const analyseCutVideo = async (file: File) => {
+    await live.stop();
+    live.reset();
+    playback.reset();
+    setFiles([file]);
+    setCutting(false);
+  };
   usePlayerKeyboard(frames, playback, shortcuts, !dialogOpen);
   const playerActions: PlayerActions = {
     onTogglePlay: playback.togglePlay, onSeek: playback.seek, onSpeed: playback.setSpeed, onFollow: playback.follow,
@@ -183,6 +197,13 @@ export default function LiveStudio() {
               {files.length === 0 ? (source === "video" ? "Choose a video…" : "Choose pictures…") : files.length === 1 ? files[0].name : `${files.length} pictures`}
             </button>
           )}
+          {source === "video" && (
+            <button className="small ghost" disabled={isLive} onClick={() => setPickingFromLibrary(true)} title="A video of the library">📚 Library</button>
+          )}
+          {videoFile && (
+            <button className="small ghost" onClick={() => { if (isLive) playback.holdCurrentFrame(); setCutting(true); }}
+              title="Keep only a part of the video: creates a new video file">✂ Cut video</button>
+          )}
           <div className="seg">
             {([["skeleton", "Skeleton"], ["box", "Box"], ["angles", "Angles"]] as [Overlay, string][]).map(([overlay, label]) => (
               <button key={overlay} className={overlays.has(overlay) ? "on" : ""} onClick={() => toggleOverlay(overlay)}>{label}</button>
@@ -207,6 +228,16 @@ export default function LiveStudio() {
         <Timeline frames={frames} index={playback.shownIndex} version={live.version} vocab={vocab}
           player={playback.player} actions={playerActions} />
         {snapshotFrame && <SnapshotDialog frame={snapshotFrame} overlays={overlays} onClose={() => setSnapshotFrame(null)} />}
+        {pickingFromLibrary && (
+          <VideoLibraryPicker onClose={() => setPickingFromLibrary(false)} onPick={async (video) => {
+            setFiles([await videoAsFile(video)]);
+            live.setError(null);
+          }} />
+        )}
+        {cutting && videoFile && (
+          <VideoCutDialog source={{ file: videoFile }} onUse={analyseCutVideo} onClose={() => setCutting(false)}
+            startAt={frame && frame.mediaKey === mediaKeyOf(videoFile) ? frame.sourceTime : null} />
+        )}
         {adjustedFrameIndex !== null && frames[adjustedFrameIndex] && (
           <FrameAdjuster frames={frames} index={adjustedFrameIndex} onFrameChange={live.updateFrame} onClose={() => setAdjustedFrameIndex(null)} />
         )}

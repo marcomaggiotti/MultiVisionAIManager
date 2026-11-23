@@ -2,6 +2,9 @@ import { NavLink, Route, Routes, useLocation } from "react-router-dom";
 import { api } from "./api";
 import { useLoad } from "./hooks";
 import LiveStudio from "./pages/LiveStudio";
+import Compare from "./pages/Compare";
+import Library from "./pages/Library";
+import Admin from "./pages/Admin";
 import Dashboard from "./pages/Dashboard";
 import Sessions from "./pages/Sessions";
 import Analyze from "./pages/Analyze";
@@ -12,12 +15,15 @@ import { LiveSessionProvider, useLiveSession } from "./live/LiveSessionContext";
 
 const NAV = [
   { to: "/", label: "Live studio" },
+  { to: "/compare", label: "Compare" },
+  { to: "/library", label: "Library" },
   { to: "/sessions", label: "Sessions" },
   { to: "/analysis", label: "Analysis" },
   { to: "/modules", label: "Modules" },
   { to: "/yolo", label: "YOLO" },
   { to: "/clip", label: "CLIP" },
   { to: "/vlm", label: "VLM" },
+  { to: "/admin", label: "Admin" },
 ];
 const STATUS_COLOR: Record<string, string> = { online: "var(--good)", starting: "var(--warn)", offline: "var(--muted)" };
 
@@ -38,7 +44,7 @@ function LiveIndicator() {
 
 function Shell() {
   const modules = useLoad(() => api<any[]>("/api/modules"), [], 8000);
-  const wide = useLocation().pathname === "/";
+  const wide = ["/", "/compare"].includes(useLocation().pathname);
   return (
     <div className="layout">
       <header className="topbar">
@@ -63,12 +69,15 @@ function Shell() {
       <main className={`content ${wide ? "wide" : ""}`}>
         <Routes>
           <Route path="/" element={<LiveStudio />} />
+          <Route path="/compare" element={<Compare />} />
+          <Route path="/library" element={<Library />} />
           <Route path="/sessions" element={<Sessions />} />
           <Route path="/analysis" element={<Analyze />} />
           <Route path="/modules" element={<Dashboard />} />
           <Route path="/yolo" element={<YoloStudio />} />
           <Route path="/clip" element={<ClipStudio />} />
           <Route path="/vlm" element={<VlmStudio />} />
+          <Route path="/admin" element={<Admin />} />
         </Routes>
       </main>
     </div>

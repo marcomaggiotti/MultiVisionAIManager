@@ -5,10 +5,13 @@ gets the dancer's smoothed keypoints, the recognised movement and corrections.
     tracking.py    MovementTracker: a movement counts once it is held for a few frames
     corrections.py CorrectionLog: corrections that persist become comments
     session.py     LiveSession: the three together, one call per frame
-    frames.py      send a frame to the YOLO module and update the session
+    adjustments.py keypoints corrected by hand, applied when a video is analysed again
+    comparison.py  ComparisonSession: a reference video and a student, side by side
+    frames.py      send frames to the YOLO module and update the sessions
 """
 
-from app.live.frames import process_frame
+from app.live.comparison import ComparisonSession, ComparisonSettings
+from app.live.frames import process_frame, process_pair
 from app.live.session import LiveSession, LiveSettings
 
-__all__ = ["LiveSession", "LiveSettings", "process_frame"]
+__all__ = ["ComparisonSession", "ComparisonSettings", "LiveSession", "LiveSettings", "process_frame", "process_pair"]

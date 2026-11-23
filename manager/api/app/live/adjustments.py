@@ -9,7 +9,7 @@ model's, so recognition, counting and feedback follow the correction.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 
 from app.ballet.keypoints import VISIBILITY_THRESHOLD, Keypoint
 
@@ -82,3 +82,15 @@ def find_adjustment(
         return None
     closest = min(adjustments, key=lambda adjustment: abs(adjustment.source_time - source_time))
     return closest if abs(closest.source_time - source_time) <= tolerance else None
+
+
+def shift_adjustments(
+    adjustments: list[KeypointAdjustment], media_key: str, start: float, end: float
+) -> list[KeypointAdjustment]:
+    """The adjustments between ``start`` and ``end`` for the part cut out as ``media_key``
+    (its time 0 is the source's ``start``)."""
+    return [
+        replace(adjustment, media_key=media_key, source_time=round(adjustment.source_time - start, 3))
+        for adjustment in adjustments
+        if start <= adjustment.source_time <= end
+    ]

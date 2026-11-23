@@ -8,7 +8,7 @@ from typing import Annotated
 import httpx
 from fastapi import APIRouter, Body, File, HTTPException, Request, Response, UploadFile, WebSocket, WebSocketDisconnect
 
-from app.api.dependencies import HttpClient, Registry, Store
+from app.api.dependencies import HttpClient, Registry, Store, running_yolo_url
 from app.http_errors import describe_http_error
 from app.live import LiveSession, process_frame
 from app.modules import ModuleRegistry
@@ -20,13 +20,6 @@ DEFAULT_DETECTION_CONFIDENCE = 0.3
 
 def _live_sessions(app) -> dict[str, LiveSession]:
     return app.state.live_sessions
-
-
-async def _yolo_url(registry: ModuleRegistry) -> str:
-    problem = await registry.ensure_running("yolo")
-    if problem:
-        raise RuntimeError(f"YOLO module: {problem}")
-    return registry.get("yolo").url
 
 
 @router.websocket("/api/live/ws")
@@ -63,7 +56,7 @@ async def live_websocket(websocket: WebSocket) -> None:
                 try:
                     result = await process_frame(
                         client,
-                        await _yolo_url(registry),
+                        await running_yolo_url(registry),
                         session,
                         message["bytes"],
                         detection_confidence,
@@ -112,7 +105,7 @@ async def live_frame(
         session = LiveSession()
         sessions[session.id] = session
     try:
-        result = await process_frame(client, await _yolo_url(registry), session, await image.read())
+        result = await process_frame(client, await running_yolo_url(registry), session, await image.read())
     except RuntimeError as error:
         raise HTTPException(503, str(error)) from error
     except httpx.HTTPError as error:
