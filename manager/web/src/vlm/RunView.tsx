@@ -2,7 +2,7 @@ import { useState } from "react";
 import { ErrorBox } from "../components/ui";
 import { NODE_ICON } from "./workflowTemplates";
 import { RunControls } from "./useRun";
-import { PicturesShown, WorkflowRun } from "./types";
+import { PicturesShown, RunStep, WorkflowRun } from "./types";
 
 const STATUS_TEXT: Record<string, string> = {
   running: "Running…", waiting: "Waiting for your answer", finished: "Finished", failed: "Failed", stopped: "Stopped",
@@ -42,8 +42,32 @@ function QuestionBox({ run, controls }: { run: WorkflowRun; controls: RunControl
   );
 }
 
-/** A run: its status, the question it waits on, each step (prompt → answer → way taken), and its result. */
-export function RunView({ controls }: { controls: RunControls }) {
+/** What a step looked at or did: per-frame readings, or an agent's thoughts and tool calls. */
+function StepDetails({ details }: { details: NonNullable<RunStep["details"]> }) {
+  if (!details.length) return null;
+  const agent = details.some((detail) => detail.kind === "tool" || detail.kind === "thought");
+  return (
+    <details open={agent}>
+      <summary className="small muted">{agent ? `Agent: ${details.filter((detail) => detail.kind === "tool").length} tool call(s)` : `${details.length} reading(s)`}</summary>
+      <ul className="step-details">
+        {details.filter((detail) => detail.kind !== "final").map((detail, index) => (
+          <li key={index} className={`detail-${detail.kind}`}>
+            {detail.kind === "tool" ? (
+              <>
+                <span className="mono">🔧 {detail.tool}({detail.input ? JSON.stringify(detail.input) : ""})</span>
+                <div className="small">→ {detail.output}</div>
+              </>
+            ) : detail.kind === "thought" ? <span className="small">💭 {detail.text}</span> : <span className="small">{detail.text}</span>}
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
+/** A run: its status, the question it waits on, each step (prompt → answer → way taken), and its result.
+ * ``icons``: the node types' icons (default: the VLM tab's). */
+export function RunView({ controls, icons }: { controls: RunControls; icons?: Record<string, string> }) {
   const { run, error } = controls;
   if (!run) return <ErrorBox error={error} />;
   return (
@@ -66,14 +90,15 @@ export function RunView({ controls }: { controls: RunControls }) {
         {run.steps.map((step, index) => (
           <li key={index} className={`type-${step.node_type}`}>
             <div className="row spread">
-              <b><span className="icon">{NODE_ICON[step.node_type]}</span> {step.title}</b>
+              <b><span className="icon">{(icons ?? NODE_ICON as Record<string, string>)[step.node_type] ?? "•"}</span> {step.title}</b>
               {step.latency_ms != null && <span className="small muted">{(step.latency_ms / 1000).toFixed(1)} s</span>}
             </div>
-            {step.prompt && step.node_type === "prompt" && (
-              <details><summary className="small muted">Prompt sent</summary><div className="small" style={{ whiteSpace: "pre-wrap" }}>{step.prompt}</div></details>
+            {step.prompt && ["prompt", "vlm_ask", "agent"].includes(step.node_type) && (
+              <details><summary className="small muted">{step.node_type === "agent" ? "Goal" : "Prompt sent"}</summary><div className="small" style={{ whiteSpace: "pre-wrap" }}>{step.prompt}</div></details>
             )}
-            {step.prompt && step.node_type === "ask" && <div className="small" style={{ whiteSpace: "pre-wrap" }}>{step.prompt}</div>}
+            {step.prompt && ["ask", "ask_user"].includes(step.node_type) && <div className="small" style={{ whiteSpace: "pre-wrap" }}>{step.prompt}</div>}
             {step.node_type === "decision" && <div className="small muted">tested {step.prompt}</div>}
+            {step.details && <StepDetails details={step.details} />}
             {step.output != null && step.node_type !== "start" && <div className="wf-output">{step.output || <span className="muted">(empty)</span>}</div>}
             {step.route && <div className="small wf-route">→ {step.route === "else" ? "otherwise" : step.route}</div>}
           </li>

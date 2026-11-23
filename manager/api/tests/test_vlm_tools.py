@@ -10,9 +10,9 @@ import httpx
 import pytest
 from PIL import Image
 
+from app.flows.graph import FlowGraph as WorkflowGraph
 from app.vlm.conditions import Condition, Operator, is_met
 from app.vlm.templating import render
-from app.vlm.workflow import WorkflowGraph
 
 MODULES = "yolo=http://yolo:8000,vlm=http://vlm:8000"
 

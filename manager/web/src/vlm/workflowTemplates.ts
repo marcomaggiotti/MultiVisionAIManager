@@ -1,11 +1,28 @@
 // Ready-made workflows and graph helpers (new nodes, chains of prompts).
-import { Condition, DEFAULT_NODE_DATA, NodeData, NodeType, Prompt, Workflow, WorkflowEdge, WorkflowGraph, WorkflowNode } from "./types";
+import { Condition, DEFAULT_NODE_DATA, NodeData, NodeKind, NodeType, Prompt, Workflow, WorkflowEdge, WorkflowGraph, WorkflowNode } from "./types";
 
 export const NODE_WIDTH = 210;
 export const NODE_HEIGHT = 86;
 
 export const NODE_LABEL: Record<NodeType, string> = { start: "Start", prompt: "Ask the VLM", decision: "Decision", ask: "Ask the user", end: "End" };
 export const NODE_ICON: Record<NodeType, string> = { start: "▶", prompt: "✦", decision: "◆", ask: "?", end: "■" };
+
+const NODE_COLOR: Record<NodeType, string> = { start: "#3ddc84", prompt: "#4f8cff", decision: "#ffb547", ask: "#ff5d8f", end: "#a78bfa" };
+
+/** How the canvas draws the VLM tab's node types. */
+export function vlmNodeKinds(promptNames: Record<string, string>): Record<string, NodeKind> {
+  const kind = (type: NodeType, summarize: NodeKind["summarize"], branching: NodeKind["branching"] = null): NodeKind => ({
+    label: NODE_LABEL[type], icon: NODE_ICON[type], color: NODE_COLOR[type],
+    hasInput: type !== "start", hasOutput: type !== "end", branching, summarize,
+  });
+  return {
+    start: kind("start", () => "pictures / video frames"),
+    prompt: kind("prompt", (data) => (data.prompt_id ? `prompt: ${promptNames[data.prompt_id] ?? "(deleted prompt)"}` : data.text || "(no prompt yet)")),
+    decision: kind("decision", (data) => `tests {{${data.test || "last"}}}`, "conditions"),
+    ask: kind("ask", (data) => `${data.question || "(no question yet)"}${data.choices?.length ? ` [${data.choices.join(" / ")}]` : ""}`, "choices"),
+    end: kind("end", (data) => data.template),
+  };
+}
 
 const shortId = () => Math.random().toString(36).slice(2, 7);
 

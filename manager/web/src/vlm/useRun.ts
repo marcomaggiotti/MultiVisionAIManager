@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { VlmInput, WorkflowGraph, WorkflowRun, answerRun, getRun, startRun, stopRun } from "./types";
+import { Graph, VlmInput, WorkflowRun, answerRun, getRun, startRun, stopRun } from "./types";
 
 const POLL_MS = 600;
 
@@ -40,7 +40,7 @@ export function useRun() {
 
   return {
     run, error, busy,
-    start: (graph: WorkflowGraph, input: VlmInput | null) => act(() => startRun(graph, input), false),
+    start: (graph: Graph, input: VlmInput | null) => act(() => startRun(graph, input), false),
     answer: (text: string) => run && act(() => answerRun(run.id, text)),
     stop: () => run && act(() => stopRun(run.id)),
     clear: () => { clearTimer(); setRun(null); setError(null); },

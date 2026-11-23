@@ -6,7 +6,7 @@ import { RunView } from "./RunView";
 import { useRun } from "./useRun";
 import { RunHighlight, Selection, WorkflowCanvas } from "./WorkflowCanvas";
 import { WorkflowInspector } from "./WorkflowInspector";
-import { NODE_ICON, NODE_LABEL, NODE_WIDTH, TEMPLATES, newNode } from "./workflowTemplates";
+import { NODE_ICON, NODE_LABEL, NODE_WIDTH, TEMPLATES, newNode, vlmNodeKinds } from "./workflowTemplates";
 import { NodeType, Prompt, VlmInput, Workflow, WorkflowGraph, checkWorkflow, deleteWorkflow, listWorkflows, saveWorkflow } from "./types";
 
 const ADDABLE: NodeType[] = ["prompt", "decision", "ask", "end"];
@@ -31,7 +31,7 @@ export function WorkflowStudio({ input, onInput, prompts, incoming, onIncomingTa
   const [error, setError] = useState<string | null>(null);
   const importInput = useRef<HTMLInputElement>(null);
   const runner = useRun();
-  const promptNames = useMemo(() => Object.fromEntries(prompts.map((prompt) => [prompt.id!, prompt.name])), [prompts]);
+  const kinds = useMemo(() => vlmNodeKinds(Object.fromEntries(prompts.map((prompt) => [prompt.id!, prompt.name]))), [prompts]);
 
   useEffect(() => {
     if (!incoming) return;
@@ -159,8 +159,8 @@ export function WorkflowStudio({ input, onInput, prompts, incoming, onIncomingTa
               <button key={type} className={`small ghost type-${type}`} onClick={() => addNode(type)}>{NODE_ICON[type]} {NODE_LABEL[type]}</button>
             ))}
           </div>
-          <WorkflowCanvas graph={workflow.graph} onChange={changeGraph} selection={selection} onSelect={setSelection}
-            highlight={highlight} promptNames={promptNames} fitKey={openedCount} />
+          <WorkflowCanvas graph={workflow.graph} onChange={(graph) => changeGraph(graph as WorkflowGraph)} selection={selection} onSelect={setSelection}
+            highlight={highlight} kinds={kinds} fitKey={openedCount} />
         </div>
         <div className="glass wf-side">
           <div className="seg" style={{ marginBottom: 10 }}>

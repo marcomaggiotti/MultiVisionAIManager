@@ -265,3 +265,18 @@ button.link:hover { text-decoration: underline; }
 .wf-output { white-space: pre-wrap; font-size: 13px; margin-top: 3px; }
 .wf-route { color: var(--good); margin-top: 2px; }
 .wf-port.out::after { content: ""; position: absolute; inset: -9px; border-radius: 50%; } /* easier to grab when zoomed out */
+
+/* ---- admin: AI workflow builder, agents ---- */
+.flow-palette { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+.palette-group { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+.palette-group > .small { text-transform: uppercase; letter-spacing: .04em; font-size: 10px; margin-right: 2px; }
+.tool-list { display: flex; flex-direction: column; gap: 4px; }
+.tool-option { display: flex; gap: 8px; align-items: flex-start; cursor: pointer; }
+.tool-option input { margin-top: 3px; }
+.step-details { list-style: none; padding-left: 6px; margin: 4px 0; display: flex; flex-direction: column; gap: 4px; }
+.step-details li, .agent-trace li { border-left: 2px solid var(--line); padding-left: 8px; }
+.detail-tool { border-left-color: #ff9f5a !important; }
+.detail-thought { color: var(--muted); }
+.agent-trace { padding-left: 18px; display: flex; flex-direction: column; gap: 8px; }
+.agent-trace .observation { white-space: pre-wrap; margin-top: 2px; color: var(--fg); opacity: .85; }
+pre.architecture { font-size: 11px; line-height: 1.45; overflow-x: auto; background: var(--panel-2); padding: 12px; border-radius: 8px; }

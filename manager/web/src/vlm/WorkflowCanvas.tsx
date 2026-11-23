@@ -1,6 +1,6 @@
 import { PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from "react";
-import { NODE_HEIGHT, NODE_ICON, NODE_LABEL, NODE_WIDTH, newEdge } from "./workflowTemplates";
-import { Condition, WorkflowGraph, WorkflowNode, describeCondition } from "./types";
+import { NODE_HEIGHT, NODE_WIDTH, newEdge } from "./workflowTemplates";
+import { Condition, Graph, GraphNode, NodeKind, describeCondition } from "./types";
 
 export type Selection = { kind: "node" | "edge"; id: string } | null;
 
@@ -19,11 +19,13 @@ const WHEEL_ZOOM_SPEED = 0.0015;
 const LOOP_HEIGHT = 46;
 const NODE_SUMMARY_LENGTH = 70;
 
-const outPort = (node: WorkflowNode) => ({ x: node.position.x + NODE_WIDTH, y: node.position.y + NODE_HEIGHT / 2 });
-const inPort = (node: WorkflowNode) => ({ x: node.position.x, y: node.position.y + NODE_HEIGHT / 2 });
+const UNKNOWN_KIND: NodeKind = { label: "Unknown", icon: "?", color: "#5b6680", hasInput: true, hasOutput: true, branching: null, summarize: () => "" };
+
+const outPort = (node: GraphNode) => ({ x: node.position.x + NODE_WIDTH, y: node.position.y + NODE_HEIGHT / 2 });
+const inPort = (node: GraphNode) => ({ x: node.position.x, y: node.position.y + NODE_HEIGHT / 2 });
 
 /** The curve of an edge, and where its label goes. */
-function edgePath(source: WorkflowNode, target: WorkflowNode) {
+function edgePath(source: GraphNode, target: GraphNode) {
   if (source.id === target.id) {
     const right = outPort(source), left = inPort(source), top = source.position.y - LOOP_HEIGHT;
     return { path: `M ${right.x} ${right.y} C ${right.x + 60} ${top}, ${left.x - 60} ${top}, ${left.x} ${left.y}`, label: { x: source.position.x + NODE_WIDTH / 2, y: top + 8 } };
@@ -36,28 +38,16 @@ function edgePath(source: WorkflowNode, target: WorkflowNode) {
   };
 }
 
-/** What a node does, in a few words (shown inside it). */
-function summary(node: WorkflowNode, promptNames: Record<string, string>): string {
-  const data = node.data;
-  const text = (() => {
-    switch (node.type) {
-      case "start": return "pictures / video frames";
-      case "prompt": return data.prompt_id ? `prompt: ${promptNames[data.prompt_id] ?? "(deleted prompt)"}` : data.text || "(no prompt yet)";
-      case "decision": return `tests {{${data.test || "last"}}}`;
-      case "ask": return `${data.question || "(no question yet)"}${data.choices.length ? ` [${data.choices.join(" / ")}]` : ""}`;
-      case "end": return data.template;
-    }
-  })();
-  return text.length > NODE_SUMMARY_LENGTH ? `${text.slice(0, NODE_SUMMARY_LENGTH)}…` : text;
-}
+const shorten = (text: string) => (text.length > NODE_SUMMARY_LENGTH ? `${text.slice(0, NODE_SUMMARY_LENGTH)}…` : text);
 
 /** The default condition of a new edge: decisions get "yes" then "otherwise", choices their next choice. */
-function defaultCondition(graph: WorkflowGraph, source: WorkflowNode): Condition | null {
+function defaultCondition(graph: Graph, source: GraphNode, kind: NodeKind): Condition | null {
   const existing = graph.edges.filter((edge) => edge.source === source.id);
-  if (source.type === "decision") return existing.length ? { operator: "else", value: "" } : { operator: "yes", value: "" };
-  if (source.type === "ask" && source.data.choices.length) {
+  if (kind.branching === "conditions") return existing.length ? { operator: "else", value: "" } : { operator: "yes", value: "" };
+  const choices: string[] = source.data.choices ?? [];
+  if (kind.branching === "choices" && choices.length) {
     const used = new Set(existing.map((edge) => edge.condition?.value));
-    const next = source.data.choices.find((choice) => !used.has(choice));
+    const next = choices.find((choice) => !used.has(choice));
     return next ? { operator: "equals", value: next } : { operator: "else", value: "" };
   }
   return existing.length ? { operator: "else", value: "" } : null;
@@ -65,13 +55,13 @@ function defaultCondition(graph: WorkflowGraph, source: WorkflowNode): Condition
 
 /** The workflow as a graph to edit: drag nodes, drag from a node's ● to another node to
  * connect them, click to select (Delete removes), drag the background to pan, wheel to zoom. */
-export function WorkflowCanvas({ graph, onChange, selection, onSelect, highlight, promptNames, height = 600, fitKey }: {
-  graph: WorkflowGraph;
-  onChange: (graph: WorkflowGraph) => void;
+export function WorkflowCanvas({ graph, onChange, selection, onSelect, highlight, kinds, height = 600, fitKey }: {
+  graph: Graph;
+  onChange: (graph: Graph) => void;
   selection: Selection;
   onSelect: (selection: Selection) => void;
   highlight: RunHighlight;
-  promptNames: Record<string, string>;
+  kinds: Record<string, NodeKind>; // how to draw each node type
   height?: number;
   fitKey?: unknown; // the whole graph is shown again when it changes (another workflow opened)
 }) {
@@ -79,6 +69,7 @@ export function WorkflowCanvas({ graph, onChange, selection, onSelect, highlight
   const [view, setView] = useState<View>({ x: 20, y: 20, scale: 0.9 });
   const [drag, setDrag] = useState<Drag | null>(null);
   const nodesById = new Map(graph.nodes.map((node) => [node.id, node]));
+  const kindOf = (node: GraphNode) => kinds[node.type] ?? UNKNOWN_KIND;
 
   /** Screen position → position on the canvas (accounts for the pan and the zoom). */
   const toCanvas = (clientX: number, clientY: number) => {
@@ -170,8 +161,9 @@ export function WorkflowCanvas({ graph, onChange, selection, onSelect, highlight
       const element = document.elementsFromPoint(event.clientX, event.clientY).find((candidate) => (candidate as HTMLElement).dataset?.nodeId);
       const targetId = (element as HTMLElement | undefined)?.dataset.nodeId;
       const source = nodesById.get(drag.source);
-      if (source && targetId && nodesById.get(targetId)?.type !== "start") {
-        const edge = newEdge(source.id, targetId, defaultCondition(graph, source));
+      const target = targetId ? nodesById.get(targetId) : undefined;
+      if (source && target && kindOf(target).hasInput) {
+        const edge = newEdge(source.id, target.id, defaultCondition(graph, source, kindOf(source)));
         onChange({ ...graph, edges: [...graph.edges, edge] });
         onSelect({ kind: "edge", id: edge.id });
       }
@@ -220,13 +212,14 @@ export function WorkflowCanvas({ graph, onChange, selection, onSelect, highlight
           const state = highlight?.current === node.id
             ? (highlight.status === "waiting" ? "waiting" : highlight.status === "failed" ? "failed" : "current")
             : highlight?.visitedNodes.has(node.id) ? "visited" : "";
+          const kind = kindOf(node);
           return (
             <div key={node.id} data-node-id={node.id} className={`wf-node type-${node.type} ${selected ? "selected" : ""} ${state}`}
-              style={{ left: node.position.x, top: node.position.y, width: NODE_WIDTH, height: NODE_HEIGHT }}>
-              <div className="wf-node-head"><span className="icon">{NODE_ICON[node.type]}</span>{node.data.title || NODE_LABEL[node.type]}</div>
-              <div className="wf-node-body">{summary(node, promptNames)}</div>
-              {node.type !== "start" && <span className="wf-port in" />}
-              {node.type !== "end" && <span className="wf-port out" data-port={node.id} title="Drag to another node to connect" />}
+              style={{ left: node.position.x, top: node.position.y, width: NODE_WIDTH, height: NODE_HEIGHT, ["--node-color" as string]: kind.color }}>
+              <div className="wf-node-head"><span className="icon">{kind.icon}</span>{node.data.title || kind.label}</div>
+              <div className="wf-node-body">{shorten(kind.summarize(node.data))}</div>
+              {kind.hasInput && <span className="wf-port in" />}
+              {kind.hasOutput && <span className="wf-port out" data-port={node.id} title="Drag to another node to connect" />}
             </div>
           );
         })}
@@ -242,9 +235,10 @@ export function WorkflowCanvas({ graph, onChange, selection, onSelect, highlight
 }
 
 /** The graph without the selected node (and its edges) or edge. */
-export function removeSelection(graph: WorkflowGraph, selection: NonNullable<Selection>): WorkflowGraph {
+export function removeSelection<G extends Graph>(graph: G, selection: NonNullable<Selection>): G {
   if (selection.kind === "edge") return { ...graph, edges: graph.edges.filter((edge) => edge.id !== selection.id) };
   return {
+    ...graph,
     nodes: graph.nodes.filter((node) => node.id !== selection.id),
     edges: graph.edges.filter((edge) => edge.source !== selection.id && edge.target !== selection.id),
   };

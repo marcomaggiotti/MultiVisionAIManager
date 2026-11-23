@@ -138,6 +138,63 @@ they are uploaded once and chosen anywhere:
 API: `GET/POST /api/videos`, `GET/PATCH/DELETE /api/videos/{id}`, `/file` (byte ranges),
 `/thumbnail`, `/frames?start&end&count` (evenly spread pictures), `POST /api/videos/{id}/cut`.
 
+## Admin: AI workflow builder and LangChain agents
+
+The **Admin** tab builds AI workflows across all the modules, graphically, and runs them
+with **LangGraph**; its **agents** are **LangChain** agents that choose the manager's
+abilities as tools.
+
+```
+Admin builder (React)          manager (FastAPI)
+  graph of nodes  ──JSON──▶  FlowGraph ── compile ──▶ LangGraph StateGraph
+                                              │  node        = catalog executor
+                                              │  arrows      = conditional edges
+                                              │  Ask the user = interrupt() + checkpointer (resume)
+                                              ▼
+            ┌─────────────── executors ───────────────┐
+            │ YOLO pose · ballet rules · CLIP · VLM   │
+            │ Agent node ─▶ LangChain agent            │
+            │   model: VlmChatModel (local) | cloud    │
+            │   tools: 7 StructuredTools               │
+            └──────────────────────────────────────────┘
+                 │ HTTP                     ▲
+                 ▼                          │
+         YOLO · CLIP · VLM modules (Docker services)
+```
+
+- **AI workflow builder**: a palette by category (*Input*, *Vision*: YOLO pose, ballet
+  evaluation, CLIP classification; *Language*: ask the VLM; *Agents*: LangChain agent;
+  *Logic*: compose text, decision, ask the user; *Output*: end). The node types come from
+  the manager's **catalog** (`GET /api/flows/catalog`): each declares its fields, and the
+  inspector draws its form from them (texts with variables, sliders, frame choice, saved
+  prompts, the agent's model and tools…). Arrows carry conditions (yes / no / contains /
+  number > … / otherwise) tried in order; any node can branch, loops are allowed. Check,
+  save, save as, export / import JSON; template *Ballet coach*: YOLO checks a dancer is
+  there → ballet rules and CLIP name the movement → you choose the depth → an agent
+  writes the coaching. *Run* shows the run live (current node, path taken, each node's
+  readings, the agent's thoughts and tool calls) and waits for your answers.
+- **How LangGraph runs it** (`app/flows/engine.py`): each flow is compiled to a
+  `StateGraph` (state: the variables, the text the arrows test); a node calls its catalog
+  executor; its arrows become one conditional edge whose router tries the conditions;
+  *Ask the user* calls `interrupt()`, the run waits, and the answer resumes it with
+  `Command(resume=…)` from the `InMemorySaver` checkpoint; `recursion_limit` stops endless
+  loops. The VLM tab's workflows run on the same engine.
+- **Agents (LangChain)** (`app/agents/`): the manager's abilities are `StructuredTool`s
+  bound to the run's frames: `frames_overview`, `detect_pose` (YOLO), `evaluate_ballet_pose`
+  (YOLO + ballet rules), `classify_movement` (CLIP), `look_at_frames` (VLM),
+  `ballet_movement_info`, `search_video_library`. The model is the **local VLM module**,
+  wrapped as a LangChain `BaseChatModel` (`VlmChatModel`: no key, nothing leaves the
+  machine), driven with the **ReAct** protocol (Thought → Action → Observation → Final
+  Answer) since small models do not call tools natively; or a **cloud model** with native
+  tool calling (`bind_tools`): set `MANAGER_AGENT_MODELS=anthropic:<model>,openai:<model>`,
+  install `pip install .[providers]` and set the API key. The *Agents* tab tries an agent on
+  a video part and shows its full trace; the *Agent* node does the same inside a workflow
+  and sees the earlier nodes' results.
+
+API: `GET /api/flows/catalog`, `GET/POST/PUT/DELETE /api/flows`, `POST /api/flows/check`,
+`POST /api/flow-runs` (+ `GET /{id}`, `POST /{id}/answer`, `POST /{id}/stop`; the VLM tab's
+`/api/workflow-runs` are the same runs), `POST /api/agents/run`.
+
 ## Architecture
 
 ![Docker Compose architecture](docs/images/architecture.svg)
@@ -348,12 +405,13 @@ sequence, with the prompt, to the VLM module.
   below 6. *Run* follows the run live: the current node pulses, the path taken turns
   green, each step shows the prompt sent, the answer and the way taken.
 
-Code: `manager/api/app/vlm/` (client, inputs, templating, conditions, workflow graph,
-runner, documents), `app/api/vlm.py`; `manager/web/src/vlm/` (WorkflowCanvas,
+Code: `manager/api/app/vlm/` (client, inputs, templating, conditions, documents),
+`app/api/vlm.py`, runs on the LangGraph engine of `app/flows/`; `manager/web/src/vlm/` (WorkflowCanvas,
 WorkflowInspector, RunView, PromptsStudio, DescribeVideo). API: `GET/POST/PUT/DELETE
 /api/prompts`, `POST /api/vlm/ask` (one or several prompts about a video part or
 pictures), `GET/POST/PUT/DELETE /api/workflows`, `POST /api/workflows/check`,
-`POST /api/workflow-runs`, `GET /api/workflow-runs/{id}`, `POST …/answer`, `POST …/stop`.
+`POST /api/workflow-runs`, `GET /api/workflow-runs/{id}`, `POST …/answer`, `POST …/stop`
+(the same runs as the Admin builder's).
 
 ## Ballet analysis pipeline
 
@@ -440,16 +498,20 @@ start.sh                    clone the YOLO module, build, create the modules, st
 manager/api/app/            hub (FastAPI)
   main.py                   app factory: shared clients, registry, store, routers
   api/                      routers: modules (status, launch, proxy), live, compare, analysis, knowledge,
-                            adjustments, videos (library, cutting), vlm (prompts, workflows, runs)
+                            adjustments, videos (library, cutting), vlm (prompts), flows (AI workflows,
+                            runs), agents
   modules/                  module registry and launchers (Docker, local process)
   media/                    ffmpeg helpers, video library, cutting
-  vlm/                      VLM client, frames of a video, prompts, workflow graph and runner
+  vlm/                      VLM client, frames of a video, prompts, conditions, templating
+  agents/                   LangChain: capabilities, tools, VlmChatModel, agent loop (native / ReAct)
+  flows/                    AI workflows: catalog, node executors, graph, LangGraph engine
   ballet/                   keypoints, measurements, movements, recognition, feedback, motion
   live/                     real-time sessions: smoothing, movement tracking, correction log
   analysis/                 multi-module pipeline, VLM context, evidence fusion
   storage.py                history (SQLite)
 manager/web/                React app: pages/LiveStudio + live/, Compare + compare/, Library + library/,
-                            VlmStudio + vlm/ (workflow editor), Analyze, Dashboard (modules), studios
+                            VlmStudio + vlm/ (workflow editor), Admin + admin/ (AI workflow builder,
+                            agents), Analyze, Dashboard (modules), studios
 modules/clip/               CLIP module: engine.py, analysis.py, gallery.py, training.py, static/ (own page)
 modules/vlm/                VLM module: engine.py, training.py (LoRA, evaluation), metrics.py, static/
 modules/yolo/               YOLO module = detect_image_engine (git submodule)

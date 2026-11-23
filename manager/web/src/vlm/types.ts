@@ -34,6 +34,20 @@ export type NodeData = {
 export type WorkflowNode = { id: string; type: NodeType; position: { x: number; y: number }; data: NodeData };
 export type WorkflowEdge = { id: string; source: string; target: string; condition: Condition | null };
 export type WorkflowGraph = { nodes: WorkflowNode[]; edges: WorkflowEdge[] };
+/** Any graph the canvas edits: the VLM tab's workflows and the Admin page's AI workflows. */
+export type GraphNode = { id: string; type: string; position: { x: number; y: number }; data: Record<string, any> };
+export type Graph = { nodes: GraphNode[]; edges: WorkflowEdge[] };
+/** How the canvas draws a node type. */
+export type NodeKind = {
+  label: string;
+  icon: string;
+  color: string;
+  hasInput: boolean;
+  hasOutput: boolean;
+  branching: "conditions" | "choices" | null;
+  summarize: (data: Record<string, any>) => string;
+};
+
 export type Workflow = { id?: string; name: string; description: string; graph: WorkflowGraph };
 
 export const DEFAULT_NODE_DATA: NodeData = {
@@ -65,13 +79,15 @@ export function describeCondition(condition: Condition | null): string {
 
 export type RunStep = {
   node_id: string;
-  node_type: NodeType;
+  node_type: string;
   title: string;
   prompt: string | null;
   output: string | null;
   edge_id: string | null;
   route: string | null;
   latency_ms: number | null;
+  /** Per-frame readings of vision nodes; an agent's thoughts and tool calls. */
+  details?: { kind: string; text?: string; tool?: string | null; input?: Record<string, unknown> | null; output?: string | null }[];
 };
 export type RunStatus = "running" | "waiting" | "finished" | "failed" | "stopped";
 export type PicturesShown = { description: string; times: number[] | null; images: string[] };
@@ -126,9 +142,9 @@ export const saveWorkflow = (workflow: Workflow) => {
   return id ? api<Workflow>(`/api/workflows/${id}`, json("PUT", body)) : api<Workflow>("/api/workflows", json("POST", body));
 };
 export const deleteWorkflow = (id: string) => api(`/api/workflows/${id}`, { method: "DELETE" });
-export const checkWorkflow = (graph: WorkflowGraph) => api<{ problems: string[] }>("/api/workflows/check", json("POST", graph));
+export const checkWorkflow = (graph: Graph) => api<{ problems: string[] }>("/api/workflows/check", json("POST", graph));
 
-export const startRun = (graph: WorkflowGraph, input: VlmInput | null) =>
+export const startRun = (graph: Graph, input: VlmInput | null) =>
   api<WorkflowRun>("/api/workflow-runs", { method: "POST", body: inputForm(input, { graph }) });
 export const getRun = (id: string) => api<WorkflowRun>(`/api/workflow-runs/${id}`);
 export const answerRun = (id: string, answer: string) => api<WorkflowRun>(`/api/workflow-runs/${id}/answer`, json("POST", { answer }));

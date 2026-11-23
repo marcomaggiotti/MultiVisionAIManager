@@ -4,6 +4,7 @@ import { useLoad } from "./hooks";
 import LiveStudio from "./pages/LiveStudio";
 import Compare from "./pages/Compare";
 import Library from "./pages/Library";
+import Admin from "./pages/Admin";
 import Dashboard from "./pages/Dashboard";
 import Sessions from "./pages/Sessions";
 import Analyze from "./pages/Analyze";
@@ -22,6 +23,7 @@ const NAV = [
   { to: "/yolo", label: "YOLO" },
   { to: "/clip", label: "CLIP" },
   { to: "/vlm", label: "VLM" },
+  { to: "/admin", label: "Admin" },
 ];
 const STATUS_COLOR: Record<string, string> = { online: "var(--good)", starting: "var(--warn)", offline: "var(--muted)" };
 
@@ -75,6 +77,7 @@ function Shell() {
           <Route path="/yolo" element={<YoloStudio />} />
           <Route path="/clip" element={<ClipStudio />} />
           <Route path="/vlm" element={<VlmStudio />} />
+          <Route path="/admin" element={<Admin />} />
         </Routes>
       </main>
     </div>

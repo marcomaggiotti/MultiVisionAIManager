@@ -5,13 +5,15 @@ from __future__ import annotations
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from app.agents.capabilities import CapabilityError
+from app.agents.chat_models import ModelUnavailableError
+from app.flows.engine import InvalidFlowError, RunNotFoundError
 from app.imaging import InvalidImageError
 from app.media.ffmpeg import FfmpegMissingError, VideoError
 from app.modules import LaunchError
 from app.storage import RecordNotFoundError
 from app.vlm.client import VlmError
 from app.vlm.inputs import InvalidInputError
-from app.vlm.runner import InvalidWorkflowError, RunNotFoundError
 
 STATUS_BY_ERROR: dict[type[Exception], int] = {
     RecordNotFoundError: 404,
@@ -20,8 +22,10 @@ STATUS_BY_ERROR: dict[type[Exception], int] = {
     VideoError: 422,
     FfmpegMissingError: 503,
     VlmError: 502,
+    CapabilityError: 502,
+    ModelUnavailableError: 422,
     InvalidInputError: 422,
-    InvalidWorkflowError: 422,
+    InvalidFlowError: 422,
     RunNotFoundError: 404,
 }
 

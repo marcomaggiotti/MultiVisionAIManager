@@ -2,7 +2,7 @@ import { ReactNode } from "react";
 import { Check, Field, Slider } from "../components/ui";
 import { NODE_ICON, NODE_LABEL } from "./workflowTemplates";
 import { Selection, removeSelection } from "./WorkflowCanvas";
-import { Condition, NodeData, OPERATORS, Operator, Prompt, WorkflowEdge, WorkflowGraph, WorkflowNode, describeCondition } from "./types";
+import { Condition, Graph, GraphNode, NodeData, OPERATORS, Operator, Prompt, WorkflowEdge, WorkflowGraph, describeCondition } from "./types";
 
 /** The variables a prompt, question or template can use in this workflow. */
 function variablesOf(graph: WorkflowGraph): string[] {
@@ -10,17 +10,17 @@ function variablesOf(graph: WorkflowGraph): string[] {
   return Array.from(new Set(["input", "last", "answer", ...outputs]));
 }
 
-function VariableChips({ graph, onInsert }: { graph: WorkflowGraph; onInsert: (text: string) => void }) {
+export function VariableChips({ graph, onInsert, names }: { graph: WorkflowGraph | null; onInsert: (text: string) => void; names?: string[] }) {
   return (
     <div className="chips" style={{ marginTop: 4 }}>
-      {variablesOf(graph).map((name) => (
+      {(names ?? variablesOf(graph!)).map((name) => (
         <button key={name} type="button" className="chip" onClick={() => onInsert(`{{${name}}}`)} title="Insert">{`{{${name}}}`}</button>
       ))}
     </div>
   );
 }
 
-function ConditionEditor({ condition, onChange }: { condition: Condition | null; onChange: (condition: Condition | null) => void }) {
+export function ConditionEditor({ condition, onChange }: { condition: Condition | null; onChange: (condition: Condition | null) => void }) {
   const operator = OPERATORS.find((option) => option.value === condition?.operator);
   return (
     <div className="row" style={{ gap: 4 }}>
@@ -38,7 +38,9 @@ function ConditionEditor({ condition, onChange }: { condition: Condition | null;
 }
 
 /** The ways out of a node, in the order they are tried (with their conditions). */
-function OutgoingEdges({ graph, node, onChange }: { graph: WorkflowGraph; node: WorkflowNode; onChange: (graph: WorkflowGraph) => void }) {
+export function OutgoingEdges({ graph, node, onChange, branching }: {
+  graph: Graph; node: GraphNode; onChange: (graph: Graph) => void; branching?: boolean;
+}) {
   const outgoing = graph.edges.filter((edge) => edge.source === node.id);
   const title = (id: string) => graph.nodes.find((candidate) => candidate.id === id)?.data.title || id;
   const updateEdge = (edgeId: string, changes: Partial<WorkflowEdge>) =>
@@ -54,7 +56,7 @@ function OutgoingEdges({ graph, node, onChange }: { graph: WorkflowGraph; node: 
   return (
     <div className="wf-outgoing">
       <div className="small muted" style={{ marginBottom: 4 }}>
-        Ways out, tried in this order (“otherwise” last). {node.type === "decision" || node.type === "ask" ? "" : "Conditions test the answer."}
+        Ways out, tried in this order (“otherwise” last). {branching ?? (node.type === "decision" || node.type === "ask") ? "" : "Conditions test the answer."}
       </div>
       {!outgoing.length && <p className="small muted">None yet: drag from the node's ● to another node.</p>}
       {outgoing.map((edge, index) => (
@@ -190,7 +192,7 @@ export function WorkflowInspector({ graph, selection, onChange, onSelect, prompt
         </Section>
       )}
 
-      {node.type !== "end" && <OutgoingEdges graph={graph} node={node} onChange={onChange} />}
+      {node.type !== "end" && <OutgoingEdges graph={graph} node={node} onChange={(next) => onChange(next as WorkflowGraph)} />}
       <button className="small danger" style={{ marginTop: 10 }} onClick={() => { onChange(removeSelection(graph, selection)); onSelect(null); }}>Remove the node</button>
     </div>
   );
