@@ -32,6 +32,7 @@ from app.flows.engine import FlowRunner
 from app.media.library import VideoLibrary
 from app.modules import ModuleRegistry, load_modules
 from app.storage import HistoryStore
+from app.version import manager_version
 from app.vlm.client import VlmClient
 from app.vlm.documents import DocumentStore
 
@@ -84,7 +85,7 @@ def create_app(
         if docker_client is not None:
             await docker_client.aclose()
 
-    app = FastAPI(title="MultiVision AI Manager", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="MultiVision AI Manager", version=manager_version(), lifespan=lifespan)
     for router_module in (knowledge, modules, live, compare, analysis, adjustments, videos, vlm, flows, agents):
         app.include_router(router_module.router)
     register_error_handlers(app)

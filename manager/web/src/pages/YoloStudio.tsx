@@ -12,6 +12,7 @@ import { ZoomableView } from "../components/ZoomableView";
 import { KeypointsPanel } from "../components/KeypointsPanel";
 import { KeypointEditor } from "../components/KeypointEditor";
 import { Snapshot, useIncomingSnapshot } from "../live/snapshot";
+import { Tuning } from "../yolo/Tuning";
 import { Det } from "../components/ImageOverlay";
 import { ImageSize, KeypointAdjustment, deleteAdjustment, findAdjustment, sameMoment, saveAdjustment, scaleAdjustment } from "../live/adjustments";
 import { useLiveSession } from "../live/LiveSessionContext";
@@ -47,17 +48,18 @@ function applyAdjustment(detections: PersonDetection[], adjustment: KeypointAdju
   if (closest < 0) return [adjusted, ...detections];
   return detections.map((detection, index) => (index === closest ? adjusted : detection));
 }
-type Tab = "inference" | "models" | "datasets" | "training" | "robustness" | "latency";
+type Tab = "inference" | "models" | "datasets" | "training" | "tuning" | "robustness" | "latency";
 
 export default function YoloStudio() {
   const [tab, setTab] = useState<Tab>("inference");
   return (
     <Page title="YOLO · detection & pose" subtitle="Bounding-box regression, classification, assignment, transfer learning, annotation, augmentation, thresholds, class imbalance, robustness and latency.">
-      <Tabs value={tab} onChange={setTab} tabs={[["inference", "Inference & thresholds"], ["models", "Models"], ["datasets", "Datasets & annotation"], ["training", "Training"], ["robustness", "Robustness"], ["latency", "Latency"]]} />
+      <Tabs value={tab} onChange={setTab} tabs={[["inference", "Inference & thresholds"], ["models", "Models"], ["datasets", "Datasets & annotation"], ["training", "Training"], ["tuning", "Tuning (search)"], ["robustness", "Robustness"], ["latency", "Latency"]]} />
       {tab === "inference" && <Inference />}
       {tab === "models" && <Models />}
       {tab === "datasets" && <Datasets />}
       {tab === "training" && <Training />}
+      {tab === "tuning" && <Tuning />}
       {tab === "robustness" && <Robustness />}
       {tab === "latency" && <Latency />}
     </Page>

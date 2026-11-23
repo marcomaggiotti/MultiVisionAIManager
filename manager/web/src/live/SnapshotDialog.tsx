@@ -48,10 +48,12 @@ export function SnapshotDialog({ frame, overlays, onClose }: { frame: Recorded; 
     }
   };
   const snapshotFile = () => createSnapshotFile(frame, overlays, withOverlay);
-  const cleanFile = () => createSnapshotFile(frame, overlays, false); // training data: never the drawn overlay
+  // Models (and training data) get the clean frame: a skeleton painted into the pixels would
+  // be analysed again, and shown twice next to the module's own detection.
+  const cleanFile = () => createSnapshotFile(frame, overlays, false);
 
   const sendToPage = (target: SnapshotTarget, path: string) => run(async () => {
-    sendSnapshot(target, { file: await snapshotFile(), ...context });
+    sendSnapshot(target, { file: await cleanFile(), ...context });
     navigate(path);
   });
   const addToDataset = () => run(async () => {
@@ -74,7 +76,7 @@ export function SnapshotDialog({ frame, overlays, onClose }: { frame: Recorded; 
         <div className="grid g2" style={{ marginTop: 10 }}>
           <div>
             <canvas ref={preview} className="overlay" style={{ maxHeight: 360, width: "100%", objectFit: "contain" }} />
-            <Check label="Include the pose overlay" checked={withOverlay} onChange={setWithOverlay} help="Skeleton coloured by the corrections, box and knee angles, as in panel A" />
+            <Check label="Include the pose overlay" checked={withOverlay} onChange={setWithOverlay} help="For download and share (skeleton coloured by the corrections, box, knee angles). YOLO, CLIP and VLM always get the clean frame." />
             {context.corrections.length > 0 && (
               <div className="small muted" style={{ marginTop: 6 }}>Corrections at this moment: {context.corrections.join(" · ")}</div>
             )}
