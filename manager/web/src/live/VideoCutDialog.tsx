@@ -1,9 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useObjectUrls } from "../hooks";
-import { ErrorBox } from "../components/ui";
+import { Check, ErrorBox } from "../components/ui";
+import { LibraryVideo, cutLibraryVideo, videoAsFile } from "../library/videos";
 import { downloadFile } from "./snapshot";
 import { mediaKeyOf } from "./types";
-import { CutMode, CutVideo, cutVideo, defaultCutName, formatSize } from "./videoCut";
+import { CutMode, cutVideo, defaultCutName, formatSize } from "./videoCut";
+
+/** The video to cut: a file chosen in the browser, or a video of the library. */
+export type CutSource = { file: File } | { libraryVideo: LibraryVideo };
+
+/** The new video: a file (cut in the browser's request), and/or a library video. */
+type CutResult = { name: string; size: number; adjustmentsCopied: number; file?: File; libraryVideo?: LibraryVideo };
 
 const STEP_SECONDS = 0.04; // about one frame at 25 fps
 const NUDGE_SECONDS = 1 / 30;
@@ -13,17 +21,23 @@ const clock = (seconds: number) => {
   return `${minutes}:${(seconds - minutes * 60).toFixed(2).padStart(5, "0")}`;
 };
 
-/** Choose the part of a video to keep and make a new video file of it, to download or
- * to analyse in the live studio. ``startAt`` opens the player at that time. */
-export function VideoCutDialog({ video, startAt, onUse, onClose }: {
-  video: File;
+/** Choose the part of a video to keep and make a new video file of it, to download, keep
+ * in the library or analyse in the live studio. ``startAt`` opens the player at that time. */
+export function VideoCutDialog({ source, startAt, onUse, onSaved, onClose }: {
+  source: CutSource;
   startAt?: number | null;
-  onUse: (file: File) => void;
+  onUse?: (file: File) => void;
+  onSaved?: (video: LibraryVideo) => void; // a new library video was made
   onClose: () => void;
 }) {
   const player = useRef<HTMLVideoElement>(null);
-  const sources = useMemo(() => [video], [video]);
-  const [videoUrl] = useObjectUrls(sources);
+  const file = "file" in source ? source.file : null;
+  const libraryVideo = "libraryVideo" in source ? source.libraryVideo : null;
+  const video = { name: (file ?? libraryVideo)!.name };
+  const sources = useMemo(() => (file ? [file] : []), [file]);
+  const [objectUrl] = useObjectUrls(sources);
+  const videoUrl = libraryVideo ? libraryVideo.url : objectUrl;
+  const [keepInLibrary, setKeepInLibrary] = useState(true);
   const [duration, setDuration] = useState(0);
   const [current, setCurrent] = useState(0);
   const [start, setStart] = useState(0);
@@ -33,9 +47,10 @@ export function VideoCutDialog({ video, startAt, onUse, onClose }: {
   const [customName, setCustomName] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<CutVideo | null>(null);
-  const resultFiles = useMemo(() => (result ? [result.file] : []), [result]);
-  const [resultUrl] = useObjectUrls(resultFiles);
+  const [result, setResult] = useState<CutResult | null>(null);
+  const resultFiles = useMemo(() => (result?.file ? [result.file] : []), [result]);
+  const [resultObjectUrl] = useObjectUrls(resultFiles);
+  const resultUrl = result?.libraryVideo ? result.libraryVideo.url : resultObjectUrl;
   const name = customName ?? defaultCutName(video, start, end);
 
   useEffect(() => {
@@ -83,7 +98,15 @@ export function VideoCutDialog({ video, startAt, onUse, onClose }: {
     setResult(null);
     player.current?.pause();
     try {
-      setResult(await cutVideo(video, start, end, mode, name, mediaKeyOf(video)));
+      if (libraryVideo) {
+        const made = await cutLibraryVideo(libraryVideo.id, start, end, mode, name);
+        setResult({ name: made.name, size: made.size, adjustmentsCopied: made.adjustments_copied, libraryVideo: made });
+        onSaved?.(made);
+      } else if (file) {
+        const made = await cutVideo(file, start, end, mode, name, mediaKeyOf(file), keepInLibrary);
+        setResult({ name: made.file.name, size: made.file.size, adjustmentsCopied: made.adjustmentsCopied, file: made.file, libraryVideo: made.libraryVideo });
+        if (made.libraryVideo) onSaved?.(made.libraryVideo);
+      }
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : String(failure));
     }
@@ -91,7 +114,7 @@ export function VideoCutDialog({ video, startAt, onUse, onClose }: {
   };
 
   const share = (seconds: number) => `${(duration ? (seconds / duration) * 100 : 0).toFixed(3)}%`;
-  return (
+  return createPortal(
     <div className="modal-backdrop" onClick={onClose}>
       <div className="glass modal video-cut" onClick={(event) => event.stopPropagation()} role="dialog" aria-label="Cut the video">
         <div className="row spread">
@@ -164,6 +187,11 @@ export function VideoCutDialog({ video, startAt, onUse, onClose }: {
               <option value="fast">Fast · same format (no re-encoding, starts at a keyframe)</option>
             </select>
           </div>
+          {file && (
+            <div style={{ alignSelf: "end" }}>
+              <Check label="Also keep it in the library" checked={keepInLibrary} onChange={setKeepInLibrary} />
+            </div>
+          )}
         </div>
 
         <ErrorBox error={error} />
@@ -179,17 +207,25 @@ export function VideoCutDialog({ video, startAt, onUse, onClose }: {
           <div className="cut-result">
             <video src={resultUrl} controls playsInline muted className="cut-player small-player" />
             <div>
-              <b>{result.file.name}</b>
-              <div className="small muted">{formatSize(result.file.size)}
+              <b>{result.name}</b>
+              <div className="small muted">{formatSize(result.size)}
+                {result.libraryVideo ? " · saved in the library" : ""}
                 {result.adjustmentsCopied ? ` · ${result.adjustmentsCopied} keypoint adjustment${result.adjustmentsCopied > 1 ? "s" : ""} carried over` : ""}</div>
               <div className="row" style={{ gap: 8, marginTop: 8 }}>
-                <button onClick={() => downloadFile(result.file)}>⬇ Download</button>
-                <button className="success" onClick={() => onUse(result.file)}>▶ Analyse it in the live studio</button>
+                {result.file
+                  ? <button onClick={() => downloadFile(result.file!)}>⬇ Download</button>
+                  : <a className="btn" href={result.libraryVideo!.url} download={result.name}>⬇ Download</a>}
+                {onUse && (
+                  <button className="success" disabled={busy} onClick={async () => {
+                    try { onUse(result.file ?? await videoAsFile(result.libraryVideo!)); } catch (failure) { setError(String(failure)); }
+                  }}>▶ Analyse it in the live studio</button>
+                )}
               </div>
             </div>
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

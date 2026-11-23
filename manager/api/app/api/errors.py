@@ -6,16 +6,23 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from app.imaging import InvalidImageError
+from app.media.ffmpeg import FfmpegMissingError, VideoError
 from app.modules import LaunchError
 from app.storage import RecordNotFoundError
-from app.video_cut import FfmpegMissingError, VideoCutError
+from app.vlm.client import VlmError
+from app.vlm.inputs import InvalidInputError
+from app.vlm.runner import InvalidWorkflowError, RunNotFoundError
 
 STATUS_BY_ERROR: dict[type[Exception], int] = {
     RecordNotFoundError: 404,
     LaunchError: 409,
     InvalidImageError: 400,
-    VideoCutError: 422,
+    VideoError: 422,
     FfmpegMissingError: 503,
+    VlmError: 502,
+    InvalidInputError: 422,
+    InvalidWorkflowError: 422,
+    RunNotFoundError: 404,
 }
 
 

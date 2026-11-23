@@ -119,6 +119,25 @@ Code: `app/ballet/comparison.py` (the rules), `app/live/comparison.py` (the sess
 two trackers, delay matching, statistics), `app/api/compare.py` (WebSocket), and
 `web/src/pages/Compare.tsx` with `web/src/compare/`.
 
+## Video library
+
+The **Library** tab keeps videos in the manager (`<data>/videos/`, records in SQLite), so
+they are uploaded once and chosen anywhere:
+
+- **Add** videos (button or drag and drop, several at once, with a progress bar); each is
+  checked with `ffprobe` (duration, size) and gets a thumbnail.
+- **Watch**, **rename**, add **notes** (dancer, class, what to look at), **download**,
+  **delete**, **search** names and notes.
+- **✂ Cut** a part into a new library video (it remembers which video it was cut from);
+  the cut dialog of the live studio can also keep its result in the library.
+- **Open** a video in the **Live studio**, as the reference of **Compare**, or in the
+  **VLM**; the 📚 buttons of the live studio and Compare choose from the library too
+  (library videos stream, with seeking, from the manager).
+- Keypoint adjustments follow a video (same name and size) and its cuts.
+
+API: `GET/POST /api/videos`, `GET/PATCH/DELETE /api/videos/{id}`, `/file` (byte ranges),
+`/thumbnail`, `/frames?start&end&count` (evenly spread pictures), `POST /api/videos/{id}/cut`.
+
 ## Architecture
 
 ![Docker Compose architecture](docs/images/architecture.svg)
@@ -300,6 +319,42 @@ Where each concept appears in this project:
 | Instruction tuning | *Instruction data* + *Instruction tuning*: LoRA / QLoRA, loss on the response only, optional connector training |
 | Evaluation | *Evaluation*: exact match, contains, token F1, ROUGE-L, ballet-vocabulary recall, latency |
 
+#### Describe a video, prompts, workflows (VLM tab, run by the manager)
+
+The VLM looks at pictures, so a video is **sampled**: the manager takes 1 to 16 frames
+spread evenly over the chosen part of a library video (ffmpeg) and sends them as a
+sequence, with the prompt, to the VLM module.
+
+- **Describe a video**: choose a library video, the part (from / to, or from the
+  player's position) and the number of frames, preview the frames, and describe it with
+  the default ballet prompt or a saved one. `{{input}}` in a prompt becomes "8 frames of
+  class.mp4 from 2.0 s to 6.0 s".
+- **Prompts**: a library of saved prompts (text, system prompt, length, temperature,
+  notes). Tick several to **compare** them side by side on the same frames (answers,
+  time, tokens), or **run them as a chain**, in the order ticked: each prompt can use the
+  previous answer `{{last}}`, or any earlier one `{{step1}}`, `{{step2}}`… A chain opens
+  in the workflow editor to add decisions and questions.
+- **Workflow**: a graphical editor of decision workflows. Nodes:
+  *Start* (the frames), *Ask the VLM* (a saved prompt or its own text; the answer is kept
+  in a variable), *Decision* (tests a variable), *Ask the user* (a question with choices
+  or a free answer: the run pauses and waits), *End* (the result, a text with variables).
+  After a node its arrows are tried in order and the first whose condition holds is
+  followed (*yes*, *no*, *contains*, *equals*, *starts with*, *number > / <*, *regex*,
+  *otherwise* last), so any node can branch and loops are allowed (a run stops after 60
+  steps). Drag nodes, drag from a node's ● to another to connect, edit the selected node
+  or arrow on the right, Delete to remove; *Check* lists what prevents running; save,
+  save as, export / import JSON; the *Ballet review* template recognises the movement,
+  asks you to confirm it, rates the technique and proposes exercises when the score is
+  below 6. *Run* follows the run live: the current node pulses, the path taken turns
+  green, each step shows the prompt sent, the answer and the way taken.
+
+Code: `manager/api/app/vlm/` (client, inputs, templating, conditions, workflow graph,
+runner, documents), `app/api/vlm.py`; `manager/web/src/vlm/` (WorkflowCanvas,
+WorkflowInspector, RunView, PromptsStudio, DescribeVideo). API: `GET/POST/PUT/DELETE
+/api/prompts`, `POST /api/vlm/ask` (one or several prompts about a video part or
+pictures), `GET/POST/PUT/DELETE /api/workflows`, `POST /api/workflows/check`,
+`POST /api/workflow-runs`, `GET /api/workflow-runs/{id}`, `POST …/answer`, `POST …/stop`.
+
 ## Ballet analysis pipeline
 
 *Ballet analysis* page, or `POST /api/analyze` with one or more pictures (in order):
@@ -384,13 +439,17 @@ modules.json                module registry (Docker)   modules.local.json   same
 start.sh                    clone the YOLO module, build, create the modules, start the manager
 manager/api/app/            hub (FastAPI)
   main.py                   app factory: shared clients, registry, store, routers
-  api/                      routers: modules (status, launch, proxy), live, analysis, knowledge
+  api/                      routers: modules (status, launch, proxy), live, compare, analysis, knowledge,
+                            adjustments, videos (library, cutting), vlm (prompts, workflows, runs)
   modules/                  module registry and launchers (Docker, local process)
+  media/                    ffmpeg helpers, video library, cutting
+  vlm/                      VLM client, frames of a video, prompts, workflow graph and runner
   ballet/                   keypoints, measurements, movements, recognition, feedback, motion
   live/                     real-time sessions: smoothing, movement tracking, correction log
   analysis/                 multi-module pipeline, VLM context, evidence fusion
   storage.py                history (SQLite)
-manager/web/                React app: pages/LiveStudio + live/ (panels, timeline, session hook), Analyze, Dashboard (modules), studios
+manager/web/                React app: pages/LiveStudio + live/, Compare + compare/, Library + library/,
+                            VlmStudio + vlm/ (workflow editor), Analyze, Dashboard (modules), studios
 modules/clip/               CLIP module: engine.py, analysis.py, gallery.py, training.py, static/ (own page)
 modules/vlm/                VLM module: engine.py, training.py (LoRA, evaluation), metrics.py, static/
 modules/yolo/               YOLO module = detect_image_engine (git submodule)

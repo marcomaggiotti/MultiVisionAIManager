@@ -6,6 +6,14 @@ import { drawSkeletonOverVideo, mirrorPartNames } from "../compare/drawing";
 import { ScoreGauge, ScoreHistory } from "../compare/ScoreViews";
 import { StudentSource, useComparison } from "../compare/useComparison";
 import { MATCH_COLOR, MatchStatus, MirrorMode, PART_LABEL, scoreStatus } from "../compare/types";
+import { mediaKeyOf } from "../live/types";
+import { VideoLibraryPicker } from "../library/VideoLibraryPicker";
+import { LibraryVideo, useVideoSentTo } from "../library/videos";
+
+/** A video to compare: a file chosen in the browser, or a library video (streamed). */
+type VideoChoice = { name: string; mediaKey: string; file: File | null; url: string | null };
+const fromFile = (file: File): VideoChoice => ({ name: file.name, mediaKey: mediaKeyOf(file), file, url: null });
+const fromLibrary = (video: LibraryVideo): VideoChoice => ({ name: video.name, mediaKey: video.media_key, file: null, url: video.url });
 
 const PLAYBACK_RATES = [0.25, 0.5, 1, 1.5, 1.75];
 const MIRROR_MODES: [MirrorMode, string, string][] = [
@@ -19,15 +27,18 @@ const clock = (seconds: number) => {
   return `${minutes}:${(seconds - minutes * 60).toFixed(1).padStart(4, "0")}`;
 };
 
-/** A video file chooser shown as a button with the chosen file's name. */
-function VideoPicker({ file, placeholder, disabled, onChoose }: { file: File | null; placeholder: string; disabled: boolean; onChoose: (file: File) => void }) {
+/** A video chooser: a file of this device, or (📚) a video of the library. */
+function VideoPicker({ choice, placeholder, disabled, onChoose }: { choice: VideoChoice | null; placeholder: string; disabled: boolean; onChoose: (choice: VideoChoice) => void }) {
   const input = useRef<HTMLInputElement>(null);
+  const [picking, setPicking] = useState(false);
   return (
     <>
-      <input ref={input} type="file" accept="video/*" hidden onChange={(event) => { const chosen = event.target.files?.[0]; if (chosen) onChoose(chosen); }} />
-      <button className="small ghost video-picker" disabled={disabled} onClick={() => input.current?.click()} title={file?.name}>
-        {file ? file.name : placeholder}
+      <input ref={input} type="file" accept="video/*" hidden onChange={(event) => { const chosen = event.target.files?.[0]; if (chosen) onChoose(fromFile(chosen)); }} />
+      <button className="small ghost video-picker" disabled={disabled} onClick={() => input.current?.click()} title={choice?.name ?? "A video file of this device"}>
+        {choice ? choice.name : placeholder}
       </button>
+      <button className="small ghost" disabled={disabled} onClick={() => setPicking(true)} title="A video of the library">📚</button>
+      {picking && <VideoLibraryPicker onPick={(video) => onChoose(fromLibrary(video))} onClose={() => setPicking(false)} />}
     </>
   );
 }
@@ -42,13 +53,17 @@ export default function Compare() {
   const referenceOverlay = useRef<HTMLCanvasElement>(null);
   const studentOverlay = useRef<HTMLCanvasElement>(null);
   const comparison = useComparison(referenceVideo, studentVideo);
-  const [referenceFile, setReferenceFile] = useState<File | null>(null);
+  // a video sent from the library page becomes the reference
+  const sentVideo = useVideoSentTo("compare");
+  const [referenceFile, setReferenceFile] = useState<VideoChoice | null>(sentVideo ? fromLibrary(sentVideo) : null);
   const [studentSource, setStudentSource] = useState<StudentSource>("camera");
-  const [studentFile, setStudentFile] = useState<File | null>(null);
-  const referenceFiles = useMemo(() => (referenceFile ? [referenceFile] : []), [referenceFile]);
-  const studentFiles = useMemo(() => (studentSource === "video" && studentFile ? [studentFile] : []), [studentSource, studentFile]);
-  const [referenceUrl] = useObjectUrls(referenceFiles);
-  const [studentUrl] = useObjectUrls(studentFiles);
+  const [studentFile, setStudentFile] = useState<VideoChoice | null>(null);
+  const referenceFiles = useMemo(() => (referenceFile?.file ? [referenceFile.file] : []), [referenceFile]);
+  const studentFiles = useMemo(() => (studentSource === "video" && studentFile?.file ? [studentFile.file] : []), [studentSource, studentFile]);
+  const [referenceObjectUrl] = useObjectUrls(referenceFiles);
+  const [studentObjectUrl] = useObjectUrls(studentFiles);
+  const referenceUrl = referenceFile?.url ?? referenceObjectUrl;
+  const studentUrl = studentFile?.url ?? studentObjectUrl;
   const [mirrorView, setMirrorView] = useState(true);
   const [offset, setOffset] = useState(0);
   const [settings, setSettings] = useState(comparison.settings);
@@ -91,7 +106,7 @@ export default function Compare() {
     setOffset(seconds);
     comparison.setStudentOffset(seconds);
   };
-  const start = () => { if (referenceFile) void comparison.start(referenceFile, studentSource); };
+  const start = () => { if (referenceFile) void comparison.start(referenceFile.mediaKey, studentSource); };
   const togglePlay = () => {
     if (status === "running") comparison.pause();
     else if (status === "paused") comparison.resume();
@@ -112,13 +127,13 @@ export default function Compare() {
           ? (comparison.cameraOn
             ? <button className="small ghost" disabled={active} onClick={comparison.stopCamera}>Turn off</button>
             : <button className="small" onClick={comparison.startCamera}>Turn on</button>)
-          : <VideoPicker file={studentFile} placeholder="Choose your video…" disabled={active} onChoose={(file) => { setStudentFile(file); comparison.setError(null); }} />}
+          : <VideoPicker choice={studentFile} placeholder="Choose your video…" disabled={active} onChoose={(file) => { setStudentFile(file); comparison.setError(null); }} />}
         <button className={`small ${mirrorView ? "" : "ghost"}`} onClick={() => setMirrorView(!mirrorView)} title="Show the student like a studio mirror">Mirror view</button>
         <span className="divider" />
         <b>Reference</b>
-        <VideoPicker file={referenceFile} placeholder="Choose a video…" disabled={active} onChoose={(file) => { setReferenceFile(file); comparison.setError(null); }} />
-        {liveVideo && liveVideo !== referenceFile && (
-          <button className="small ghost" disabled={active} onClick={() => setReferenceFile(liveVideo)} title="The video chosen in the live studio">
+        <VideoPicker choice={referenceFile} placeholder="Choose a video…" disabled={active} onChoose={(file) => { setReferenceFile(file); comparison.setError(null); }} />
+        {liveVideo && liveVideo !== referenceFile?.file && (
+          <button className="small ghost" disabled={active} onClick={() => setReferenceFile(fromFile(liveVideo))} title="The video chosen in the live studio">
             Use {liveVideo.name}
           </button>
         )}

@@ -11,6 +11,8 @@ import { Overlay } from "../live/drawing";
 import { SnapshotDialog } from "../live/SnapshotDialog";
 import { FrameAdjuster } from "../live/FrameAdjuster";
 import { VideoCutDialog } from "../live/VideoCutDialog";
+import { VideoLibraryPicker } from "../library/VideoLibraryPicker";
+import { videoAsFile } from "../library/videos";
 import { Recorded, STATUS_COLOR, Status, Vocabulary, fmtTime, mediaKeyOf, stepColor } from "../live/types";
 
 const PART_LABEL: Record<string, string> = {
@@ -26,6 +28,7 @@ export default function LiveStudio() {
   const [snapshotFrame, setSnapshotFrame] = useState<Recorded | null>(null);
   const [adjustedFrameIndex, setAdjustedFrameIndex] = useState<number | null>(null);
   const [cutting, setCutting] = useState(false);
+  const [pickingFromLibrary, setPickingFromLibrary] = useState(false);
   const [dancer, setDancer] = useState(() => { try { return localStorage.getItem("dancer") ?? ""; } catch { return ""; } });
   const [settings, setSettings] = useState(live.settings);
   const [busy, setBusy] = useState<string | null>(null);
@@ -194,6 +197,9 @@ export default function LiveStudio() {
               {files.length === 0 ? (source === "video" ? "Choose a video…" : "Choose pictures…") : files.length === 1 ? files[0].name : `${files.length} pictures`}
             </button>
           )}
+          {source === "video" && (
+            <button className="small ghost" disabled={isLive} onClick={() => setPickingFromLibrary(true)} title="A video of the library">📚 Library</button>
+          )}
           {videoFile && (
             <button className="small ghost" onClick={() => { if (isLive) playback.holdCurrentFrame(); setCutting(true); }}
               title="Keep only a part of the video: creates a new video file">✂ Cut video</button>
@@ -222,8 +228,14 @@ export default function LiveStudio() {
         <Timeline frames={frames} index={playback.shownIndex} version={live.version} vocab={vocab}
           player={playback.player} actions={playerActions} />
         {snapshotFrame && <SnapshotDialog frame={snapshotFrame} overlays={overlays} onClose={() => setSnapshotFrame(null)} />}
+        {pickingFromLibrary && (
+          <VideoLibraryPicker onClose={() => setPickingFromLibrary(false)} onPick={async (video) => {
+            setFiles([await videoAsFile(video)]);
+            live.setError(null);
+          }} />
+        )}
         {cutting && videoFile && (
-          <VideoCutDialog video={videoFile} onUse={analyseCutVideo} onClose={() => setCutting(false)}
+          <VideoCutDialog source={{ file: videoFile }} onUse={analyseCutVideo} onClose={() => setCutting(false)}
             startAt={frame && frame.mediaKey === mediaKeyOf(videoFile) ? frame.sourceTime : null} />
         )}
         {adjustedFrameIndex !== null && frames[adjustedFrameIndex] && (

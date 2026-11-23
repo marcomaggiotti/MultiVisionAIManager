@@ -1,5 +1,4 @@
 import { RefObject, useCallback, useEffect, useRef, useState } from "react";
-import { mediaKeyOf } from "../live/types";
 import { ComparisonResult, ComparisonSettings, ComparisonStatistics, DEFAULT_COMPARISON_SETTINGS } from "./types";
 
 export type ComparisonStatus = "idle" | "connecting" | "countdown" | "running" | "paused" | "ended";
@@ -182,7 +181,7 @@ export function useComparison(referenceVideo: RefObject<HTMLVideoElement>, stude
   };
 
   /** Connect, count down (time to get in position), then play the reference and compare. */
-  const start = async (referenceFile: File, studentSource: StudentSource) => {
+  const start = async (referenceMediaKey: string, studentSource: StudentSource) => {
     setError(null);
     setSummary(null);
     setResult(null);
@@ -202,7 +201,7 @@ export function useComparison(referenceVideo: RefObject<HTMLVideoElement>, stude
       return;
     }
     send({ type: "config", ...settings.current });
-    send({ type: "reference", media_key: mediaKeyOf(referenceFile) });
+    send({ type: "reference", media_key: referenceMediaKey });
     const reference = referenceVideo.current!;
     const student = studentVideo.current!;
     reference.pause();

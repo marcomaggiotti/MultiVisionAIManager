@@ -24,11 +24,15 @@ from pathlib import Path
 import httpx
 from fastapi import FastAPI
 
-from app.api import adjustments, analysis, compare, knowledge, live, modules, videos
+from app.api import adjustments, analysis, compare, knowledge, live, modules, videos, vlm
 from app.api.errors import register_error_handlers
 from app.config import Settings, get_settings
+from app.media.library import VideoLibrary
 from app.modules import ModuleRegistry, load_modules
 from app.storage import HistoryStore
+from app.vlm.client import VlmClient
+from app.vlm.documents import DocumentStore
+from app.vlm.runner import WorkflowRunner
 
 DOCKER_API_TIMEOUT_SECONDS = 30.0
 CONNECT_TIMEOUT_SECONDS = 5.0
@@ -62,6 +66,11 @@ def create_app(
         app.state.http_client = http_client
         app.state.registry = ModuleRegistry(registered, http_client, settings.health_timeout)
         app.state.store = HistoryStore(data_dir)
+        app.state.library = VideoLibrary(data_dir, app.state.store.database_path)
+        app.state.prompts = DocumentStore(app.state.store.database_path, "prompt")
+        app.state.workflows = DocumentStore(app.state.store.database_path, "workflow")
+        app.state.vlm = VlmClient(app.state.registry, http_client, settings.proxy_timeout)
+        app.state.workflow_runner = WorkflowRunner(app.state.vlm, app.state.prompts)
         app.state.live_sessions = {}
         idle_watcher = asyncio.create_task(app.state.registry.stop_idle_modules_forever())
         yield
@@ -73,7 +82,7 @@ def create_app(
             await docker_client.aclose()
 
     app = FastAPI(title="MultiVision AI Manager", version="0.1.0", lifespan=lifespan)
-    for router_module in (knowledge, modules, live, compare, analysis, adjustments, videos):
+    for router_module in (knowledge, modules, live, compare, analysis, adjustments, videos, vlm):
         app.include_router(router_module.router)
     register_error_handlers(app)
     return app

@@ -7,17 +7,37 @@ import { ImageOverlay } from "../components/ImageOverlay";
 import { JobList } from "../components/Jobs";
 import { SnapshotNotice } from "../components/SnapshotNotice";
 import { Snapshot, useIncomingSnapshot } from "../live/snapshot";
+import { useVideoSentTo } from "../library/videos";
+import { DescribeVideo } from "../vlm/DescribeVideo";
+import { videoInput } from "../vlm/InputChooser";
+import { PromptsStudio } from "../vlm/PromptsStudio";
+import { WorkflowStudio } from "../vlm/WorkflowStudio";
+import { VlmInput, Workflow, listPrompts } from "../vlm/types";
 
 const V = (p: string) => mod("vlm", p);
-type Tab = "models" | "chat" | "decoding" | "inspect" | "datasets" | "tuning" | "evaluation";
+type Tab = "video" | "prompts" | "workflow" | "models" | "chat" | "decoding" | "inspect" | "datasets" | "tuning" | "evaluation";
 type Params = Record<string, number | boolean>;
 
 export default function VlmStudio() {
-  const [tab, setTab] = useState<Tab>("chat");
+  // a video sent from the library opens "Describe a video"
+  const sentVideo = useVideoSentTo("vlm");
+  const [tab, setTab] = useState<Tab>(sentVideo ? "video" : "chat");
   const presets = useLoad(() => api(V("/v1/presets")), []);
+  const prompts = useLoad(listPrompts, []);
+  // the same video (part) for "Describe", "Prompts" and "Workflow"
+  const [input, setInput] = useState<VlmInput | null>(sentVideo ? videoInput(sentVideo) : null);
+  const [incomingWorkflow, setIncomingWorkflow] = useState<Workflow | null>(null);
   return (
     <Page title="VLM · vision-language models" subtitle="Transformer language models, tokenization, attention, decoding, instruction tuning, image encoders, cross-attention vs projected tokens, multimodal alignment, evaluation.">
-      <Tabs value={tab} onChange={setTab} tabs={[["models", "Models"], ["chat", "Ask"], ["decoding", "Decoding comparison"], ["inspect", "Tokens & attention"], ["datasets", "Instruction data"], ["tuning", "Instruction tuning"], ["evaluation", "Evaluation"]]} />
+      <Tabs value={tab} onChange={setTab} tabs={[["video", "Describe a video"], ["prompts", "Prompts"], ["workflow", "Workflow"], ["models", "Models"], ["chat", "Ask"], ["decoding", "Decoding comparison"], ["inspect", "Tokens & attention"], ["datasets", "Instruction data"], ["tuning", "Instruction tuning"], ["evaluation", "Evaluation"]]} />
+      {tab === "video" && <DescribeVideo input={input} onInput={setInput} prompts={prompts.data ?? []} onPromptsChange={prompts.reload} />}
+      {tab === "prompts" && (
+        <PromptsStudio input={input} onInput={setInput} prompts={prompts.data ?? []} onPromptsChange={prompts.reload}
+          onOpenWorkflow={(graph, name) => { setIncomingWorkflow({ name, description: "", graph }); setTab("workflow"); }} />
+      )}
+      {tab === "workflow" && (
+        <WorkflowStudio input={input} onInput={setInput} prompts={prompts.data ?? []} incoming={incomingWorkflow} onIncomingTaken={() => setIncomingWorkflow(null)} />
+      )}
       {tab === "models" && <Models />}
       {tab === "chat" && <Chat presets={presets.data} />}
       {tab === "decoding" && <Decoding presets={presets.data} />}

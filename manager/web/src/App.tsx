@@ -3,6 +3,7 @@ import { api } from "./api";
 import { useLoad } from "./hooks";
 import LiveStudio from "./pages/LiveStudio";
 import Compare from "./pages/Compare";
+import Library from "./pages/Library";
 import Dashboard from "./pages/Dashboard";
 import Sessions from "./pages/Sessions";
 import Analyze from "./pages/Analyze";
@@ -14,6 +15,7 @@ import { LiveSessionProvider, useLiveSession } from "./live/LiveSessionContext";
 const NAV = [
   { to: "/", label: "Live studio" },
   { to: "/compare", label: "Compare" },
+  { to: "/library", label: "Library" },
   { to: "/sessions", label: "Sessions" },
   { to: "/analysis", label: "Analysis" },
   { to: "/modules", label: "Modules" },
@@ -66,6 +68,7 @@ function Shell() {
         <Routes>
           <Route path="/" element={<LiveStudio />} />
           <Route path="/compare" element={<Compare />} />
+          <Route path="/library" element={<Library />} />
           <Route path="/sessions" element={<Sessions />} />
           <Route path="/analysis" element={<Analyze />} />
           <Route path="/modules" element={<Dashboard />} />

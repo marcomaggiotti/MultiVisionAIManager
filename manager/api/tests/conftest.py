@@ -32,9 +32,9 @@ class Scripted:
 
 @pytest.fixture
 def make_client(tmp_path):
-    def make(script, handler=None):
+    def make(script, handler=None, modules="yolo=http://yolo:8000"):
         """``handler`` (a request -> response function) replaces the scripted YOLO module."""
-        settings = Settings(_env_file=None, data_dir=str(tmp_path), modules="yolo=http://yolo:8000")
+        settings = Settings(_env_file=None, data_dir=str(tmp_path), modules=modules)
         return TestClient(create_app(settings, transport=httpx.MockTransport(handler or Scripted(script))))
 
     return make

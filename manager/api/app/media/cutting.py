@@ -10,22 +10,18 @@ Two modes:
 
 from __future__ import annotations
 
-import asyncio
 import re
-import shutil
 from enum import StrEnum
 from pathlib import Path
 
+from app.media import ffmpeg
+from app.media.ffmpeg import VideoError
+
 MIN_CUT_SECONDS = 0.1
-ERROR_LINES_SHOWN = 3
 
 
-class VideoCutError(Exception):
+class VideoCutError(VideoError):
     """The cut cannot be made (bad range, unreadable video)."""
-
-
-class FfmpegMissingError(VideoCutError):
-    """ffmpeg is not installed where the manager runs."""
 
 
 class CutMode(StrEnum):
@@ -65,14 +61,11 @@ def check_range(start: float, end: float) -> None:
 async def cut_video(source: Path, target: Path, start: float, end: float, mode: CutMode) -> None:
     """Write the part of ``source`` between ``start`` and ``end`` (seconds) to ``target``."""
     check_range(start, end)
-    if shutil.which("ffmpeg") is None:
-        raise FfmpegMissingError("ffmpeg is not installed where the manager runs (the Docker image includes it)")
-    process = await asyncio.create_subprocess_exec(
-        *ffmpeg_command(source, target, start, end, mode),
-        stdout=asyncio.subprocess.DEVNULL,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    _, stderr = await process.communicate()
-    if process.returncode != 0 or not target.exists() or target.stat().st_size == 0:
-        details = " ".join(stderr.decode(errors="replace").strip().splitlines()[-ERROR_LINES_SHOWN:])
-        raise VideoCutError(f"ffmpeg could not cut this video: {details or 'no output'}")
+    try:
+        await ffmpeg.run(ffmpeg_command(source, target, start, end, mode))
+    except ffmpeg.FfmpegMissingError:
+        raise
+    except VideoError as error:
+        raise VideoCutError(str(error)) from error
+    if not target.exists() or target.stat().st_size == 0:
+        raise VideoCutError("ffmpeg could not cut this video: no output")
