@@ -24,6 +24,7 @@ export function JobList({ jobs, selected, onSelect, extra }: { jobs: JobSummary[
 
 export function progressText(p: any): string {
   if (!p) return "";
+  if (p.trials && p.total) return `trial ${p.current}/${p.total}`;
   if (p.epoch && p.epochs) return `epoch ${p.epoch}/${p.epochs}`;
   if (p.done && p.total) return `${p.done}/${p.total}`;
   return p.stage ?? "";

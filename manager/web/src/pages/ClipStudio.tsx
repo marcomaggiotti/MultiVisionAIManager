@@ -6,6 +6,7 @@ import { Heatmap, LineChart, Scatter } from "../components/charts";
 import { JobList } from "../components/Jobs";
 import { SnapshotNotice } from "../components/SnapshotNotice";
 import { Snapshot, useIncomingSnapshot } from "../live/snapshot";
+import { SnapshotPickerButton } from "../library/SnapshotPicker";
 
 const C = (p: string) => mod("clip", p);
 type Tab = "model" | "zeroshot" | "similarity" | "tokens" | "retrieval" | "space" | "finetune";
@@ -81,6 +82,7 @@ function ZeroShot({ presets }: { presets: any }) {
       <Card title="Zero-shot classification">
         <SnapshotNotice snapshot={snapshot} />
         <Files onChange={(picked) => { setSnapshot(null); setFiles(picked); }} />
+        <SnapshotPickerButton multiple onPick={(picked) => { setSnapshot(picked[0]); setFiles(picked.map((item) => item.file)); }} />
         <Thumbs urls={urls} selected={sel} onSelect={setSel} />
         <Field label="Labels (one per line)">
           <div className="row" style={{ marginBottom: 4 }}>

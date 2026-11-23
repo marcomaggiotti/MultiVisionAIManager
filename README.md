@@ -68,6 +68,11 @@ persist are written to the feedback log, with the time, so you can jump back to 
 - The live session belongs to the app, not to the page: open the YOLO, CLIP or VLM tab
   while a video runs (a red dot next to *Live studio* shows it is still running) and come
   back to the same video, frames and player position.
+- **Snapshot library**: every snapshot is saved in the manager (the clean frame, with its
+  video, time, recognised movement and corrections): *Library → 📷 Snapshots* to view,
+  annotate, download, delete or open one in YOLO, CLIP or the VLM; those tabs (and the VLM /
+  Admin *Pictures* input) choose from it with **📷 From snapshots**. API:
+  `GET/POST /api/snapshots`, `GET/PATCH/DELETE /api/snapshots/{id}`, `/image`.
 - **Snapshot** (📷 or `S`) of the shown frame, with or without the pose overlay: download,
   share (phone share sheet, or copy to the clipboard), open it in **YOLO · detect**,
   **CLIP · zero-shot** or **VLM · ask** (the question is pre-filled with the recognised
@@ -299,6 +304,22 @@ It is cloned automatically into `modules/yolo` (git submodule).
 | Robustness | *Robustness*: 11 perturbations × severity, share of detections kept |
 | Latency optimisation | *Latency*: benchmark per input size and FP32/FP16; export to ONNX / TensorRT / OpenVINO |
 
+#### Tuning: hyperparameter search (YOLO → Tuning)
+
+Several **short trainings** (trials) that differ only in a few hyperparameters, ranked on
+one validation metric (pose or box mAP), then the best settings are trained fully.
+
+- **Grid**: every combination of the listed values (e.g. `lr0` 0.001, 0.01 × `augment.mosaic`
+  0.5, 1.0 = 4 trials). **Random**: N draws in ranges (log scale for learning rates),
+  better with 3+ hyperparameters. At most 6 hyperparameters, 30 trials.
+- Any training option can be searched except those that would make trials incomparable
+  (epochs, split, validation thresholds); suggestions: learning rate, frozen layers, mosaic,
+  pose loss gain, optimizer. Every trial uses the same augmentation preset and split.
+- It runs as one "tune" job in the YOLO module (`training/tuning.py`): trials in
+  `jobs/<id>/trials/<n>/`, live progress, a failing trial does not stop the search. The
+  best trial's weights are the job's weights: **serve them**, or **train fully with the best
+  settings** (a normal training job with more epochs).
+
 ### CLIP (`modules/clip`)
 
 | Topic | Where |
@@ -428,6 +449,16 @@ pictures), `GET/POST/PUT/DELETE /api/workflows`, `POST /api/workflows/check`,
 5. **Fusion** ranks candidate steps with the evidence from each source.
 
 The angles are 2-D, as seen by the camera, so the cues are hints, not measurements.
+
+## Version
+
+The top bar shows the version (e.g. `v0.11.0`); hover for the build date and commit,
+click for **what's new** in each version. Each update raises the version
+(`manager/web/package.json` and `manager/api/pyproject.toml`) and adds an entry to
+`manager/web/src/changelog.ts`. The page asks the manager for its version (`/api/version`)
+every minute: if they differ, the badge turns orange: *reload the page* (the server was
+updated) or *rebuild both* (`docker compose up -d --build`). `index.html` is never cached,
+so a reload always gets the new build.
 
 ## Run it
 

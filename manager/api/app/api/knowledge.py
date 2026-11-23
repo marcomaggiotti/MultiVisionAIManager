@@ -8,6 +8,7 @@ from app import ballet
 from app.analysis import BALLET_STEPS, DEFAULT_OPTIONS
 from app.api.dependencies import Registry
 from app.ballet.keypoints import KEYPOINT_NAMES, SKELETON
+from app.version import STARTED, manager_version
 
 router = APIRouter()
 
@@ -46,6 +47,12 @@ def root() -> dict:
 @router.get("/health", tags=["ops"])
 def health() -> dict:
     return {"status": "ok"}
+
+
+@router.get("/api/version", tags=["ops"])
+def manager_version_info() -> dict:
+    """The running manager's version and start time (the web app compares it with its own)."""
+    return {"version": manager_version(), "started": STARTED}
 
 
 @router.get("/api/ballet", tags=["knowledge"])

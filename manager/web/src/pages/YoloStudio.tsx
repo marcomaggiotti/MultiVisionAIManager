@@ -12,6 +12,8 @@ import { ZoomableView } from "../components/ZoomableView";
 import { KeypointsPanel } from "../components/KeypointsPanel";
 import { KeypointEditor } from "../components/KeypointEditor";
 import { Snapshot, useIncomingSnapshot } from "../live/snapshot";
+import { SnapshotPickerButton } from "../library/SnapshotPicker";
+import { Tuning } from "../yolo/Tuning";
 import { Det } from "../components/ImageOverlay";
 import { ImageSize, KeypointAdjustment, deleteAdjustment, findAdjustment, sameMoment, saveAdjustment, scaleAdjustment } from "../live/adjustments";
 import { useLiveSession } from "../live/LiveSessionContext";
@@ -47,17 +49,18 @@ function applyAdjustment(detections: PersonDetection[], adjustment: KeypointAdju
   if (closest < 0) return [adjusted, ...detections];
   return detections.map((detection, index) => (index === closest ? adjusted : detection));
 }
-type Tab = "inference" | "models" | "datasets" | "training" | "robustness" | "latency";
+type Tab = "inference" | "models" | "datasets" | "training" | "tuning" | "robustness" | "latency";
 
 export default function YoloStudio() {
   const [tab, setTab] = useState<Tab>("inference");
   return (
     <Page title="YOLO · detection & pose" subtitle="Bounding-box regression, classification, assignment, transfer learning, annotation, augmentation, thresholds, class imbalance, robustness and latency.">
-      <Tabs value={tab} onChange={setTab} tabs={[["inference", "Inference & thresholds"], ["models", "Models"], ["datasets", "Datasets & annotation"], ["training", "Training"], ["robustness", "Robustness"], ["latency", "Latency"]]} />
+      <Tabs value={tab} onChange={setTab} tabs={[["inference", "Inference & thresholds"], ["models", "Models"], ["datasets", "Datasets & annotation"], ["training", "Training"], ["tuning", "Tuning (search)"], ["robustness", "Robustness"], ["latency", "Latency"]]} />
       {tab === "inference" && <Inference />}
       {tab === "models" && <Models />}
       {tab === "datasets" && <Datasets />}
       {tab === "training" && <Training />}
+      {tab === "tuning" && <Tuning />}
       {tab === "robustness" && <Robustness />}
       {tab === "latency" && <Latency />}
     </Page>
@@ -136,6 +139,7 @@ function Inference() {
         <p className="small muted mono">{model.data?.weights} · task {model.data?.task}</p>
         <SnapshotNotice snapshot={snapshot} />
         <Files multiple={false} label="Picture" onChange={(picked) => { setSnapshot(null); setFiles(picked); }} />
+        <SnapshotPickerButton onPick={([picked]) => { setSnapshot(picked); setFiles([picked.file]); }} />
         <Field label="Classes" help={`Comma separated, * = all. The model knows ${labels.length} classes.`}>
           <input type="text" list="yolo-labels" value={classes} onChange={(e) => setClasses(e.target.value)} />
           <datalist id="yolo-labels">{labels.map((l) => <option key={l} value={l} />)}</datalist>

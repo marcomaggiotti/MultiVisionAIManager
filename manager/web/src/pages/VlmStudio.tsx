@@ -7,6 +7,7 @@ import { ImageOverlay } from "../components/ImageOverlay";
 import { JobList } from "../components/Jobs";
 import { SnapshotNotice } from "../components/SnapshotNotice";
 import { Snapshot, useIncomingSnapshot } from "../live/snapshot";
+import { SnapshotPickerButton } from "../library/SnapshotPicker";
 import { useVideoSentTo } from "../library/videos";
 import { DescribeVideo } from "../vlm/DescribeVideo";
 import { videoInput } from "../vlm/InputChooser";
@@ -171,6 +172,7 @@ function Chat({ presets }: { presets: any }) {
       <Card title="Ask about pictures">
         <SnapshotNotice snapshot={snapshot} />
         <Files onChange={(picked) => { setSnapshot(null); setFiles(picked); }} label="Pictures (several = a sequence, in order)" />
+        <SnapshotPickerButton multiple onPick={(picked) => { setSnapshot(picked[0]); setFiles(picked.map((item) => item.file)); }} />
         <Thumbs urls={urls} onRemove={(i) => setFiles(files.filter((_, k) => k !== i))} />
         <PromptFields presets={presets} s={s} />
         <details><summary className="small">Decoding</summary>{params.max_new_tokens !== undefined && <DecodingForm params={params} onChange={setParams} />}</details>

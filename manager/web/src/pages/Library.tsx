@@ -1,7 +1,8 @@
 import { DragEvent, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useLoad } from "../hooks";
-import { ErrorBox, Page } from "../components/ui";
+import { ErrorBox, Page, Tabs } from "../components/ui";
+import { SnapshotsGallery } from "../library/SnapshotsGallery";
 import { useLiveSession } from "../live/LiveSessionContext";
 import { VideoCutDialog } from "../live/VideoCutDialog";
 import {
@@ -21,6 +22,7 @@ export default function Library() {
   const [playing, setPlaying] = useState<LibraryVideo | null>(null);
   const [cutting, setCutting] = useState<LibraryVideo | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [section, setSection] = useState<"videos" | "snapshots">("videos");
 
   const all = videos.data ?? [];
   const byId = new Map(all.map((video) => [video.id, video]));
@@ -83,7 +85,18 @@ export default function Library() {
   };
 
   return (
-    <Page title="Video library" subtitle="Videos kept by the manager: watch them, cut them, and open them in the live studio, the comparison or the VLM.">
+    <Page title="Library" subtitle="Videos and snapshots kept by the manager: open them in the live studio, the comparison, YOLO, CLIP or the VLM.">
+      <Tabs value={section} onChange={setSection} tabs={[["videos", "🎞 Videos"], ["snapshots", "📷 Snapshots"]]} />
+      {section === "snapshots" ? (
+        <>
+          <div className="glass drop-zone">
+            <span className="muted small">Snapshots are saved here when you take them in the live studio (📷 under the timeline).</span>
+            <span style={{ flex: 1 }} />
+            <input type="search" placeholder="Search movement, video, notes…" value={filter} onChange={(event) => setFilter(event.target.value)} style={{ maxWidth: 280 }} />
+          </div>
+          <SnapshotsGallery filter={filter} />
+        </>
+      ) : (<>
       <div className={`glass drop-zone ${dragOver ? "over" : ""}`} onDragOver={(event) => { event.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)} onDrop={onDrop}>
         <input ref={input} type="file" accept="video/*" multiple hidden onChange={(event) => { void upload(Array.from(event.target.files ?? [])); event.target.value = ""; }} />
@@ -130,6 +143,7 @@ export default function Library() {
         <p className="muted">{all.length ? "No video matches the search." : "No video yet: add your class recordings and reference videos."}</p>
       )}
 
+      </>)}
       {playing && (
         <div className="modal-backdrop" onClick={() => setPlaying(null)}>
           <div className="glass modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-label={playing.name}>

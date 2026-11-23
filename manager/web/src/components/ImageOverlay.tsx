@@ -14,7 +14,7 @@ export const KEYPOINT_NAMES = [
 ];
 
 export type Box = { x1: number; y1: number; x2: number; y2: number };
-export type Det = { label: string; confidence: number; box: Box; keypoints?: number[][] | null };
+export type Det = { label: string; confidence: number; box: Box; keypoints?: number[][] | null; adjusted?: boolean };
 
 /** Picture with boxes, labels and pose skeletons drawn on top; optional heat map. */
 export function ImageOverlay({ src, detections = [], highlight, highlightKeypoint, heat, minVisibility = 0.5, maxHeight = 520 }: {
@@ -50,7 +50,7 @@ export function ImageOverlay({ src, detections = [], highlight, highlightKeypoin
         const b = d.box;
         ctx.strokeRect(b.x1, b.y1, b.x2 - b.x1, b.y2 - b.y1);
         ctx.font = `${Math.round(lw * 6 + 6)}px sans-serif`;
-        const text = `${d.label} ${(d.confidence * 100).toFixed(0)}%`;
+        const text = d.adjusted ? `${d.label} · ✎ adjusted` : `${d.label} ${(d.confidence * 100).toFixed(0)}%`;
         const tw = ctx.measureText(text).width;
         ctx.fillStyle = "#ff5a36";
         ctx.fillRect(b.x1, Math.max(0, b.y1 - lw * 6 - 10), tw + 8, lw * 6 + 10);

@@ -280,3 +280,21 @@ button.link:hover { text-decoration: underline; }
 .agent-trace { padding-left: 18px; display: flex; flex-direction: column; gap: 8px; }
 .agent-trace .observation { white-space: pre-wrap; margin-top: 2px; color: var(--fg); opacity: .85; }
 pre.architecture { font-size: 11px; line-height: 1.45; overflow-x: auto; background: var(--panel-2); padding: 12px; border-radius: 8px; }
+
+/* ---- YOLO tuning ---- */
+.tune-parameter { display: flex; flex-direction: column; gap: 4px; padding: 8px 0; border-bottom: 1px dashed var(--line); }
+.tune-table tr.best td { background: rgba(61, 220, 132, .1); }
+.tune-best { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; }
+
+/* ---- version ---- */
+.version-badge { background: transparent; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; font-size: 12px; font-weight: 500; font-family: ui-monospace, monospace; }
+.version-badge:hover { color: var(--fg); border-color: var(--accent); }
+.version-badge.warn { color: var(--warn); border-color: var(--warn); }
+.modal.whats-new { width: min(720px, 100%); }
+.release { border-top: 1px solid var(--line); padding: 8px 0; }
+.release.current b { color: var(--accent); }
+.release ul { margin: 4px 0 0; padding-left: 18px; }
+.tune-parameter .row { flex-wrap: nowrap; }
+.tune-parameter .row select, .tune-parameter .row input[type=number] { flex: 1; min-width: 0; }
+.video-card.chosen { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(79, 140, 255, .4); }
+.snapshot-order { position: absolute; left: 14px; top: 14px; }

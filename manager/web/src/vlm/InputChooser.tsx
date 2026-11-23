@@ -3,6 +3,7 @@ import { api } from "../api";
 import { useObjectUrls } from "../hooks";
 import { ErrorBox, Slider, Thumbs } from "../components/ui";
 import { VideoLibraryPicker } from "../library/VideoLibraryPicker";
+import { SnapshotPickerButton } from "../library/SnapshotPicker";
 import { LibraryVideo, formatDuration } from "../library/videos";
 import { VlmInput } from "./types";
 
@@ -83,6 +84,7 @@ export function InputChooser({ value, onChange }: { value: VlmInput | null; onCh
             const chosen = Array.from(event.target.files ?? []).slice(0, MAX_FRAMES);
             onChange(chosen.length ? { kind: "pictures", files: chosen } : null);
           }} />
+          <SnapshotPickerButton multiple onPick={(picked) => onChange({ kind: "pictures", files: [...files, ...picked.map((item) => item.file)].slice(0, MAX_FRAMES) })} />
           <p className="small muted">Up to {MAX_FRAMES} pictures, in order (a sequence of moments).</p>
           {pictureUrls.length > 0 && <Thumbs urls={pictureUrls} />}
         </>
