@@ -25,11 +25,12 @@ import httpx
 from fastapi import FastAPI
 
 from app.agents.capabilities import Services
-from app.api import adjustments, agents, analysis, compare, flows, knowledge, live, modules, videos, vlm
+from app.api import adjustments, agents, analysis, compare, flows, knowledge, live, modules, snapshots, videos, vlm
 from app.api.errors import register_error_handlers
 from app.config import Settings, get_settings
 from app.flows.engine import FlowRunner
 from app.media.library import VideoLibrary
+from app.media.snapshots import SnapshotLibrary
 from app.modules import ModuleRegistry, load_modules
 from app.storage import HistoryStore
 from app.version import manager_version
@@ -69,6 +70,7 @@ def create_app(
         app.state.registry = ModuleRegistry(registered, http_client, settings.health_timeout)
         app.state.store = HistoryStore(data_dir)
         app.state.library = VideoLibrary(data_dir, app.state.store.database_path)
+        app.state.snapshots = SnapshotLibrary(data_dir, app.state.store.database_path)
         app.state.prompts = DocumentStore(app.state.store.database_path, "prompt")
         app.state.workflows = DocumentStore(app.state.store.database_path, "workflow")
         app.state.vlm = VlmClient(app.state.registry, http_client, settings.proxy_timeout)
@@ -86,7 +88,19 @@ def create_app(
             await docker_client.aclose()
 
     app = FastAPI(title="MultiVision AI Manager", version=manager_version(), lifespan=lifespan)
-    for router_module in (knowledge, modules, live, compare, analysis, adjustments, videos, vlm, flows, agents):
+    for router_module in (
+        knowledge,
+        modules,
+        live,
+        compare,
+        analysis,
+        adjustments,
+        videos,
+        snapshots,
+        vlm,
+        flows,
+        agents,
+    ):
         app.include_router(router_module.router)
     register_error_handlers(app)
     return app

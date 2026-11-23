@@ -4,6 +4,14 @@ export type Release = { version: string; date: string; title: string; changes: s
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.12.0", date: "2026-11-23", title: "Snapshot library",
+    changes: [
+      "Every snapshot taken in the live studio is saved in the library (the clean frame, with its video, time, movement and corrections).",
+      "Library → 📷 Snapshots: view, annotate, download, delete, open in YOLO, CLIP or VLM.",
+      "YOLO, CLIP and VLM tabs (and the VLM / Admin “Pictures” input): 📷 From snapshots to choose one or several.",
+    ],
+  },
+  {
     version: "0.11.0", date: "2026-11-23", title: "YOLO hyperparameter search, version display",
     changes: [
       "YOLO → Tuning (search): grid or random search over training hyperparameters (learning rate, frozen layers, augmentation, loss gains…), short trials ranked on mAP, then serve the best or train it fully.",

@@ -15,6 +15,7 @@ export type Snapshot = {
   corrections: string[]; // technique corrections shown at that moment
   mediaKey: string | null; // the video (or picture) it comes from; null for the camera
   sourceTime: number | null; // its time inside that video
+  libraryId?: string; // its id in the snapshot library, once saved
 };
 
 const JPEG_QUALITY = 0.92;

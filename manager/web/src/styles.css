@@ -296,3 +296,5 @@ pre.architecture { font-size: 11px; line-height: 1.45; overflow-x: auto; backgro
 .release ul { margin: 4px 0 0; padding-left: 18px; }
 .tune-parameter .row { flex-wrap: nowrap; }
 .tune-parameter .row select, .tune-parameter .row input[type=number] { flex: 1; min-width: 0; }
+.video-card.chosen { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(79, 140, 255, .4); }
+.snapshot-order { position: absolute; left: 14px; top: 14px; }

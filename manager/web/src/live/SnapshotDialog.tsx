@@ -6,6 +6,7 @@ import { Check, ErrorBox, Field } from "../components/ui";
 import { Overlay, renderFrame } from "./drawing";
 import { SnapshotTarget, createSnapshotFile, describeFrame, downloadFile, sendSnapshot, shareFile } from "./snapshot";
 import { Recorded, fmtTime } from "./types";
+import { LibrarySnapshot, saveSnapshot } from "../library/snapshots";
 
 type Dataset = { id: string; name: string; classes: string[] };
 
@@ -17,6 +18,9 @@ const MODULE_PAGES: { target: SnapshotTarget; label: string; path: string; help:
 
 /** What to do with the paused frame: download, share, send to a module page, or add it
  * to a YOLO dataset / CLIP gallery for training. */
+// Each frame is kept once in the snapshot library, however often its dialog opens.
+const savedFrames = new WeakMap<Recorded, Promise<LibrarySnapshot>>();
+
 export function SnapshotDialog({ frame, overlays, onClose }: { frame: Recorded; overlays: Set<Overlay>; onClose: () => void }) {
   const navigate = useNavigate();
   const preview = useRef<HTMLCanvasElement>(null);
@@ -28,6 +32,8 @@ export function SnapshotDialog({ frame, overlays, onClose }: { frame: Recorded; 
   const [datasetId, setDatasetId] = useState("");
   const [galleryName, setGalleryName] = useState("studio");
   const [galleryLabel, setGalleryLabel] = useState(context.movement ?? "");
+  const [kept, setKept] = useState<LibrarySnapshot | null>(null);
+  const [keepError, setKeepError] = useState<string | null>(null);
 
   useEffect(() => { if (preview.current) void renderFrame(preview.current, frame, withOverlay ? overlays : new Set()); }, [frame, overlays, withOverlay]);
   useEffect(() => { if (!datasetId && datasets.data?.length) setDatasetId(datasets.data[0].id); }, [datasets.data, datasetId]);
@@ -52,8 +58,19 @@ export function SnapshotDialog({ frame, overlays, onClose }: { frame: Recorded; 
   // be analysed again, and shown twice next to the module's own detection.
   const cleanFile = () => createSnapshotFile(frame, overlays, false);
 
+  // Taking a snapshot keeps it in the library (the clean frame, with its context).
+  useEffect(() => {
+    if (!savedFrames.has(frame)) {
+      savedFrames.set(frame, cleanFile().then((file) => saveSnapshot({ file, ...context })));
+    }
+    savedFrames.get(frame)!.then(setKept).catch((failure) => {
+      savedFrames.delete(frame);
+      setKeepError(failure instanceof Error ? failure.message : String(failure));
+    });
+  }, [frame]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const sendToPage = (target: SnapshotTarget, path: string) => run(async () => {
-    sendSnapshot(target, { file: await cleanFile(), ...context });
+    sendSnapshot(target, { file: await cleanFile(), ...context, libraryId: kept?.id });
     navigate(path);
   });
   const addToDataset = () => run(async () => {
@@ -73,6 +90,9 @@ export function SnapshotDialog({ frame, overlays, onClose }: { frame: Recorded; 
           <h3 style={{ margin: 0 }}>Snapshot · {fmtTime(frame.result.t)}{context.movement ? ` · ${context.movement}` : ""}</h3>
           <button className="small ghost" onClick={onClose} aria-label="Close">✕</button>
         </div>
+        <p className="small" style={{ margin: "4px 0 8px", color: keepError ? "var(--bad)" : kept ? "var(--good)" : "var(--muted)" }}>
+          {keepError ? `Not saved in the library: ${keepError}` : kept ? "✓ Saved in the snapshot library (Library → Snapshots; 📷 From snapshots in YOLO, CLIP, VLM)" : "Saving in the snapshot library…"}
+        </p>
         <div className="grid g2" style={{ marginTop: 10 }}>
           <div>
             <canvas ref={preview} className="overlay" style={{ maxHeight: 360, width: "100%", objectFit: "contain" }} />

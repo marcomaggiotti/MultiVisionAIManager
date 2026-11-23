@@ -68,6 +68,11 @@ persist are written to the feedback log, with the time, so you can jump back to 
 - The live session belongs to the app, not to the page: open the YOLO, CLIP or VLM tab
   while a video runs (a red dot next to *Live studio* shows it is still running) and come
   back to the same video, frames and player position.
+- **Snapshot library**: every snapshot is saved in the manager (the clean frame, with its
+  video, time, recognised movement and corrections): *Library → 📷 Snapshots* to view,
+  annotate, download, delete or open one in YOLO, CLIP or the VLM; those tabs (and the VLM /
+  Admin *Pictures* input) choose from it with **📷 From snapshots**. API:
+  `GET/POST /api/snapshots`, `GET/PATCH/DELETE /api/snapshots/{id}`, `/image`.
 - **Snapshot** (📷 or `S`) of the shown frame, with or without the pose overlay: download,
   share (phone share sheet, or copy to the clipboard), open it in **YOLO · detect**,
   **CLIP · zero-shot** or **VLM · ask** (the question is pre-filled with the recognised

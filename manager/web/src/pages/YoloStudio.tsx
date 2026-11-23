@@ -12,6 +12,7 @@ import { ZoomableView } from "../components/ZoomableView";
 import { KeypointsPanel } from "../components/KeypointsPanel";
 import { KeypointEditor } from "../components/KeypointEditor";
 import { Snapshot, useIncomingSnapshot } from "../live/snapshot";
+import { SnapshotPickerButton } from "../library/SnapshotPicker";
 import { Tuning } from "../yolo/Tuning";
 import { Det } from "../components/ImageOverlay";
 import { ImageSize, KeypointAdjustment, deleteAdjustment, findAdjustment, sameMoment, saveAdjustment, scaleAdjustment } from "../live/adjustments";
@@ -138,6 +139,7 @@ function Inference() {
         <p className="small muted mono">{model.data?.weights} · task {model.data?.task}</p>
         <SnapshotNotice snapshot={snapshot} />
         <Files multiple={false} label="Picture" onChange={(picked) => { setSnapshot(null); setFiles(picked); }} />
+        <SnapshotPickerButton onPick={([picked]) => { setSnapshot(picked); setFiles([picked.file]); }} />
         <Field label="Classes" help={`Comma separated, * = all. The model knows ${labels.length} classes.`}>
           <input type="text" list="yolo-labels" value={classes} onChange={(e) => setClasses(e.target.value)} />
           <datalist id="yolo-labels">{labels.map((l) => <option key={l} value={l} />)}</datalist>

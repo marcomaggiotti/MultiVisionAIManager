@@ -10,6 +10,7 @@ from app.agents.chat_models import ModelUnavailableError
 from app.flows.engine import InvalidFlowError, RunNotFoundError
 from app.imaging import InvalidImageError
 from app.media.ffmpeg import FfmpegMissingError, VideoError
+from app.media.snapshots import InvalidSnapshotError
 from app.modules import LaunchError
 from app.storage import RecordNotFoundError
 from app.vlm.client import VlmError
@@ -20,6 +21,7 @@ STATUS_BY_ERROR: dict[type[Exception], int] = {
     LaunchError: 409,
     InvalidImageError: 400,
     VideoError: 422,
+    InvalidSnapshotError: 422,
     FfmpegMissingError: 503,
     VlmError: 502,
     CapabilityError: 502,
