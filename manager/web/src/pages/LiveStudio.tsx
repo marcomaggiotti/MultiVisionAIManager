@@ -184,21 +184,21 @@ export default function LiveStudio() {
             {(["camera", "video", "pictures"] as Source[]).map((s) => (
               <button key={s} className={source === s ? "on" : ""} disabled={isLive} onClick={() => {
                 if (s !== source) { setSource(s); setFiles([]); if (fileInput.current) fileInput.current.value = ""; }
-                if (s !== "camera") setTimeout(() => fileInput.current?.click(), 0);
+                // videos come from the library only; pictures from this device
+                if (s === "video") setPickingFromLibrary(true);
+                if (s === "pictures") setTimeout(() => fileInput.current?.click(), 0);
               }}>
-                {{ camera: "◉ Camera", video: "▶ Video file", pictures: "▦ Pictures" }[s]}
+                {{ camera: "◉ Camera", video: "📚 Library video", pictures: "▦ Pictures" }[s]}
               </button>
             ))}
           </div>
-          <input ref={fileInput} type="file" hidden multiple={source === "pictures"} accept={source === "video" ? "video/*" : "image/*"} onChange={(e) => { setFiles(Array.from(e.target.files ?? [])); live.setError(null); }} />
+          <input ref={fileInput} type="file" hidden multiple accept="image/*" onChange={(e) => { setFiles(Array.from(e.target.files ?? [])); live.setError(null); }} />
           {source !== "camera" && (
-            <button className="small ghost" disabled={isLive} onClick={() => fileInput.current?.click()} title={files.map((f) => f.name).join("\n")}
+            <button className="small ghost" disabled={isLive} title={files.map((f) => f.name).join("\n")}
+              onClick={() => (source === "video" ? setPickingFromLibrary(true) : fileInput.current?.click())}
               style={{ maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {files.length === 0 ? (source === "video" ? "Choose a video…" : "Choose pictures…") : files.length === 1 ? files[0].name : `${files.length} pictures`}
+              {files.length === 0 ? (source === "video" ? "Choose from the library…" : "Choose pictures…") : files.length === 1 ? files[0].name : `${files.length} pictures`}
             </button>
-          )}
-          {source === "video" && (
-            <button className="small ghost" disabled={isLive} onClick={() => setPickingFromLibrary(true)} title="A video of the library">📚 Library</button>
           )}
           {videoFile && (
             <button className="small ghost" onClick={() => { if (isLive) playback.holdCurrentFrame(); setCutting(true); }}

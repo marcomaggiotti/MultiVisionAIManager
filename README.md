@@ -135,7 +135,7 @@ they are uploaded once and chosen anywhere:
   **delete**, **search** names and notes.
 - **✂ Cut** a part into a new library video (it remembers which video it was cut from);
   the cut dialog of the live studio can also keep its result in the library.
-- **Open** a video in the **Live studio**, as the reference of **Compare**, or in the
+- **Open** a video in the **Live studio** (its only video source: *📚 Library video*), as the reference of **Compare**, or in the
   **VLM**; the 📚 buttons of the live studio and Compare choose from the library too
   (library videos stream, with seeking, from the manager).
 - Keypoint adjustments follow a video (same name and size) and its cuts.

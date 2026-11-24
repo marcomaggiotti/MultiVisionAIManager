@@ -4,6 +4,10 @@ export type Release = { version: string; date: string; title: string; changes: s
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.12.3", date: "2026-11-24", title: "Live studio: videos from the library only",
+    changes: ["The live studio's “Video file” upload is replaced by “📚 Library video”: choose a library video (or add one to the library from the picker)."],
+  },
+  {
     version: "0.12.2", date: "2026-11-23", title: "Fix: CLIP and VLM models load again",
     changes: [
       "CLIP and VLM images now use PyTorch 2.8 (CUDA 12.6): recent transformers refused the old PyTorch 2.5 (“AutoModel requires PyTorch >= 2.6”).",
