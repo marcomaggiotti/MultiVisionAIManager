@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api } from "../api";
+import { api, json } from "../api";
+import { KeypointEditor } from "../components/KeypointEditor";
+import { ImageSize, saveAdjustment } from "../live/adjustments";
 import { useLoad } from "../hooks";
 import { Card, ErrorBox } from "../components/ui";
 import { LineChart } from "../components/charts";
@@ -57,6 +59,7 @@ export function VideoKeypoints() {
   const [hovered, setHovered] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(false);
   const grid = useRef<HTMLDivElement>(null);
   const latestRequest = useRef(0); // answers to older requests are ignored (a slow one must not overwrite a newer range)
   const video = videos.data?.find((candidate) => candidate.id === videoId);
@@ -89,7 +92,7 @@ export function VideoKeypoints() {
   // ← / → step through the frames
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!frames?.length || (event.target as HTMLElement).closest("input, textarea, select")) return;
+      if (editing || !frames?.length || (event.target as HTMLElement).closest("input, textarea, select")) return;
       if (event.key === "ArrowRight") setSelected((index) => Math.min(frames.length - 1, index + 1));
       else if (event.key === "ArrowLeft") setSelected((index) => Math.max(0, index - 1));
       else return;
@@ -97,7 +100,7 @@ export function VideoKeypoints() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [frames]);
+  }, [frames, editing]);
 
   // keep the selected thumbnail in view inside the grid
   useEffect(() => {
@@ -125,6 +128,21 @@ export function VideoKeypoints() {
   };
 
   const current = frames?.[selected];
+  // the editor works in the pixels the keypoints were measured in: fetch the frame at that size
+  const analysedSize: ImageSize | null = current?.image ?? (video ? { width: video.width, height: video.height } : null);
+  const editorSide = analysedSize ? Math.min(1280, Math.max(analysedSize.width, analysedSize.height)) : DETAIL_SIDE;
+
+  /** The corrected keypoints replace the frame's in the video's track, and become a keypoint
+   * adjustment of that moment (a new live analysis of the video keeps them). */
+  const saveKeypoints = async (keypoints: number[][], image: ImageSize) => {
+    if (!video || !current || !frames) return;
+    const { adjustment, evaluation } = await saveAdjustment(video.media_key, current.source_time, keypoints, image);
+    const corrected: TrackFrame = {
+      ...current, keypoints: adjustment.keypoints, box: adjustment.box, image, movement: evaluation.pose?.step ?? null, adjusted: true,
+    };
+    await api("/api/keypoint-tracks", json("PUT", { media_key: video.media_key, session_id: current.session_id, frames: [corrected] }));
+    setFrames(frames.map((frame, index) => (index === selected ? corrected : frame)));
+  };
   const detection = current?.keypoints && current.box ? [{ label: "person", confidence: 1, box: current.box, keypoints: current.keypoints, adjusted: current.adjusted }] : [];
   return (
     <div className="stack">
@@ -184,6 +202,9 @@ export function VideoKeypoints() {
             <div className="grid result-split">
               <Card title={`Frame at ${current.source_time.toFixed(3)} s${current.movement ? ` · ${current.movement}` : ""}`}
                 actions={<span className="row" style={{ gap: 4 }}>
+                  <button className="small" onClick={() => setEditing(true)} title="Drag the keypoints to where the joints really are; they replace this frame's">
+                    ✎ {current.keypoints ? "Adjust keypoints" : "Place keypoints"}
+                  </button>
                   <button className="small ghost" disabled={selected === 0} onClick={() => setSelected(selected - 1)}>◀ previous</button>
                   <span className="small muted">{selected + 1} / {frames.length}</span>
                   <button className="small ghost" disabled={selected === frames.length - 1} onClick={() => setSelected(selected + 1)}>next ▶</button>
@@ -194,6 +215,12 @@ export function VideoKeypoints() {
                 </div>
                 {current.adjusted && <p className="small"><span className="adjusted-tag">✎ adjusted</span> keypoints corrected by hand</p>}
               </Card>
+              {editing && (
+                <KeypointEditor imageSrc={frameUrl(video.id, current.source_time, editorSide)} keypoints={current.keypoints}
+                  title={`Adjust keypoints · ${current.source_time.toFixed(3)} s`}
+                  note={`Saved for ${video.name} at ${current.source_time.toFixed(2)} s: they replace this frame's keypoints, and a new analysis of the video in the live studio keeps them.`}
+                  onSave={saveKeypoints} onClose={() => setEditing(false)} />
+              )}
               <Card title="Keypoints">
                 {detection.length
                   ? <KeypointsPanel detections={detection} selectedPerson={0} onSelectPerson={() => undefined} highlightedKeypoint={hovered ?? keypoint}
