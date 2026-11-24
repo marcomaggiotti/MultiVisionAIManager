@@ -298,3 +298,13 @@ pre.architecture { font-size: 11px; line-height: 1.45; overflow-x: auto; backgro
 .tune-parameter .row select, .tune-parameter .row input[type=number] { flex: 1; min-width: 0; }
 .video-card.chosen { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(79, 140, 255, .4); }
 .snapshot-order { position: absolute; left: 14px; top: 14px; }
+
+/* ---- live studio: keypoints ---- */
+.keypoints-live { font-size: 12px; }
+.keypoints-live td, .keypoints-live th { padding: 2px 6px; }
+.keypoint-collection { margin-top: 0; }
+.collection-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 14px; margin-top: 8px; }
+@media (max-width: 1100px) { .collection-grid { grid-template-columns: 1fr; } }
+.collection-table { max-height: 230px; overflow: auto; position: relative; }
+.collection-table td, .collection-table th { padding: 2px 6px; }
+.collection-table thead th { position: sticky; top: 0; z-index: 1; background: #111827; }

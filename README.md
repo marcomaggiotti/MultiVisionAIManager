@@ -68,6 +68,11 @@ persist are written to the feedback log, with the time, so you can jump back to 
 - The live session belongs to the app, not to the page: open the YOLO, CLIP or VLM tab
   while a video runs (a red dot next to *Live studio* shows it is still running) and come
   back to the same video, frames and player position.
+- **Keypoints**: the right panel lists the shown frame's 17 keypoints in real time (pixels,
+  visibility; hover rings the point in panel A, click follows it); *Keypoints per frame*
+  under the timeline collects every analysed frame: a trajectory chart of the followed
+  keypoint, a frame table (click to go there), CSV (one row per frame and keypoint) and
+  JSON download. Saved sessions include the keypoints of each frame.
 - **Snapshot library**: every snapshot is saved in the manager (the clean frame, with its
   video, time, recognised movement and corrections): *Library → 📷 Snapshots* to view,
   annotate, download, delete or open one in YOLO, CLIP or the VLM; those tabs (and the VLM /

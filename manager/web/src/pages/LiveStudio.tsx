@@ -11,6 +11,8 @@ import { Overlay } from "../live/drawing";
 import { SnapshotDialog } from "../live/SnapshotDialog";
 import { FrameAdjuster } from "../live/FrameAdjuster";
 import { VideoCutDialog } from "../live/VideoCutDialog";
+import { KeypointsLive } from "../live/KeypointsLive";
+import { KeypointCollection } from "../live/KeypointCollection";
 import { VideoLibraryPicker } from "../library/VideoLibraryPicker";
 import { videoAsFile } from "../library/videos";
 import { Recorded, STATUS_COLOR, Status, Vocabulary, fmtTime, mediaKeyOf, stepColor } from "../live/types";
@@ -29,6 +31,9 @@ export default function LiveStudio() {
   const [adjustedFrameIndex, setAdjustedFrameIndex] = useState<number | null>(null);
   const [cutting, setCutting] = useState(false);
   const [pickingFromLibrary, setPickingFromLibrary] = useState(false);
+  // the keypoint followed: ringed in panel A, charted in the collection (hovering previews another)
+  const [followedKeypoint, setFollowedKeypoint] = useState(15);
+  const [hoveredKeypoint, setHoveredKeypoint] = useState<number | null>(null);
   const [dancer, setDancer] = useState(() => { try { return localStorage.getItem("dancer") ?? ""; } catch { return ""; } });
   const [settings, setSettings] = useState(live.settings);
   const [busy, setBusy] = useState<string | null>(null);
@@ -90,6 +95,8 @@ export default function LiveStudio() {
       const series = frames.map((f) => ({
         t: f.result.t, held: f.result.current.step, pose: f.result.evaluation?.pose?.step ?? null, motion: f.result.motion,
         angles: f.result.evaluation?.angles ?? null, parts: f.result.evaluation?.parts ?? null,
+        video_time: f.sourceTime, adjusted: !!f.result.adjusted,
+        keypoints: f.result.dancer?.keypoints.map(([x, y, v]) => [Math.round(x * 10) / 10, Math.round(y * 10) / 10, Math.round(v * 1000) / 1000]) ?? null,
       }));
       const body = {
         id: live.session, title: `${dancer || "Dancer"} · ${new Date().toLocaleString()}`, dancer,
@@ -220,13 +227,15 @@ export default function LiveStudio() {
         </div>
         {live.error && <div className="error">{live.error}</div>}
         <div className="panels">
-          <CameraPanel frame={frame} overlays={overlays} mirror={mirror} />
+          <CameraPanel frame={frame} overlays={overlays} mirror={mirror} highlightKeypoint={hoveredKeypoint ?? followedKeypoint} />
           <BodyMap frame={frame} />
           <Skeleton3D frame={frame} />
           <PoseCard frame={frame} vocab={vocab} />
         </div>
         <Timeline frames={frames} index={playback.shownIndex} version={live.version} vocab={vocab}
           player={playback.player} actions={playerActions} />
+        <KeypointCollection frames={frames} shownIndex={playback.shownIndex} version={live.version}
+          keypoint={hoveredKeypoint ?? followedKeypoint} onKeypoint={setFollowedKeypoint} onSeek={playback.seek} />
         {snapshotFrame && <SnapshotDialog frame={snapshotFrame} overlays={overlays} onClose={() => setSnapshotFrame(null)} />}
         {pickingFromLibrary && (
           <VideoLibraryPicker onClose={() => setPickingFromLibrary(false)} onPick={async (video) => {
@@ -245,6 +254,12 @@ export default function LiveStudio() {
 
       {/* ---------- right ---------- */}
       <div className="col right">
+        <details className="glass" open>
+          <summary style={{ fontWeight: 600 }}>Keypoints · live</summary>
+          <KeypointsLive frame={frame} highlighted={hoveredKeypoint ?? followedKeypoint}
+            onHighlight={setHoveredKeypoint} onFollow={(index) => { setFollowedKeypoint(index); setHoveredKeypoint(null); }} />
+          <p className="small muted" style={{ margin: "4px 0 0" }}>Click a keypoint to follow it (ring in panel A, chart below the timeline).</p>
+        </details>
         <div className="glass">
           <h3>Detected poses</h3>
           {Object.keys(counts).length === 0 && <p className="small muted">Poses held for a moment are counted here.</p>}

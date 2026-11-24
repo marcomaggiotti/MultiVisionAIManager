@@ -4,6 +4,14 @@ export type Release = { version: string; date: string; title: string; changes: s
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.13.0", date: "2026-11-24", title: "Live studio: keypoints in real time, per-frame collection",
+    changes: [
+      "Right panel “Keypoints · live”: the 17 keypoints (x, y in pixels, visibility) of the shown frame, updated as the video plays; hover rings a point in panel A, click follows it.",
+      "“Keypoints per frame” under the timeline: every analysed frame's keypoints, a trajectory chart (x, y over the frames) of the followed keypoint, a frame table (click to go there), CSV and JSON download.",
+      "Saved sessions now include each frame's keypoints and video time.",
+    ],
+  },
+  {
     version: "0.12.3", date: "2026-11-24", title: "Live studio: videos from the library only",
     changes: ["The live studio's “Video file” upload is replaced by “📚 Library video”: choose a library video (or add one to the library from the picker)."],
   },
