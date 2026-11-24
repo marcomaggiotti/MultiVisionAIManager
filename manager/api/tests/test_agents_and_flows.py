@@ -46,7 +46,10 @@ class Modules:
         if path == "/v1/detect":
             box = {"x1": 20, "y1": 30, "x2": 150, "y2": 205}
             people = [{"label": "person", "confidence": 0.9, "box": box, "keypoints": ARABESQUE}]
-            return httpx.Response(200, json={"detections": people, "image": {"width": 200, "height": 220}})
+            return httpx.Response(200, json={
+                "detections": people, "image": {"width": 200, "height": 220},
+                "counts": {"person": 1}, "model": {"weights": "fake-pose.pt"},
+            })  # fmt: skip
         if path == "/v1/zero-shot":
             count = request.content.count(b'name="images"')
             ranking = [{"label": "arabesque", "probability": 0.71}, {"label": "attitude", "probability": 0.2}]

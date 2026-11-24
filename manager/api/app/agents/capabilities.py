@@ -35,6 +35,7 @@ class Services:
     http_client: httpx.AsyncClient
     vlm: VlmClient
     library: VideoLibrary
+    recorder: object | None = None  # UsageRecorder: module calls go to the history
 
 
 @dataclass(frozen=True)
@@ -72,9 +73,10 @@ class BalletReading:
 class Capabilities:
     """The manager's abilities on the pictures of one run (frames numbered from 1)."""
 
-    def __init__(self, services: Services, pictures: Pictures) -> None:
+    def __init__(self, services: Services, pictures: Pictures, source: str = "Workflow") -> None:
         self.services = services
         self.pictures = pictures
+        self.source = source  # how the history names the use: "Workflow", "Agent"
         self._poses: dict[int, PoseReading] = {}
 
     @property
@@ -107,6 +109,14 @@ class Capabilities:
         moments = f" at {', '.join(f'{moment:.1f} s' for moment in times)}" if times else ""
         return f"{self.pictures.description}: {self.frame_count} frames numbered 1 to {self.frame_count}{moments}."
 
+    async def _post(self, module: str, url: str, request: dict, picture: bytes | None, **arguments) -> httpx.Response:
+        recorder = self.services.recorder
+        if recorder is None:
+            return await self.services.http_client.post(url, **arguments)
+        return await recorder.post(
+            self.services.http_client, module, url, source=self.source, request=request, picture=picture, **arguments
+        )
+
     async def _module_url(self, name: str) -> str:
         registry = self.services.registry
         if problem := await registry.ensure_running(name):
@@ -120,8 +130,11 @@ class Capabilities:
             return self._poses[frame]
         url = await self._module_url("yolo")
         try:
-            response = await self.services.http_client.post(
+            response = await self._post(
+                "yolo",
                 f"{url}/v1/detect",
+                {"frame": frame, "classes": "person", "confidence": PERSON_CONFIDENCE},
+                self.pictures.jpegs[frame - 1],
                 params={"classes": "person", "confidence": PERSON_CONFIDENCE},
                 files={"image": (f"frame-{frame}.jpg", self.pictures.jpegs[frame - 1], "image/jpeg")},
             )
@@ -178,7 +191,9 @@ class Capabilities:
         data = {"labels": json.dumps(labels)} if labels else {}
         files = [("images", (f"frame-{frame}.jpg", self.pictures.jpegs[frame - 1], "image/jpeg")) for frame in frames]
         try:
-            response = await self.services.http_client.post(f"{url}/v1/zero-shot", data=data, files=files)
+            first = self.pictures.jpegs[frames[0] - 1] if frames else None
+            request = {"frames": frames, "labels": labels or "ballet vocabulary"}
+            response = await self._post("clip", f"{url}/v1/zero-shot", request, first, data=data, files=files)
             response.raise_for_status()
         except httpx.HTTPError as error:
             raise CapabilityError(f"CLIP module: {describe_http_error(error)}") from error
@@ -207,7 +222,9 @@ class Capabilities:
 
     # --- VLM, knowledge, library -----------------------------------------------------
     async def look(self, question: str, max_new_tokens: int = 200) -> str:
-        answer = await self.services.vlm.ask(question, self.pictures.jpegs, AskOptions(max_new_tokens=max_new_tokens))
+        answer = await self.services.vlm.ask(
+            question, self.pictures.jpegs, AskOptions(max_new_tokens=max_new_tokens), source=self.source
+        )
         return answer.text
 
     @staticmethod

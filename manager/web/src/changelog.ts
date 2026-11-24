@@ -4,6 +4,14 @@ export type Release = { version: string; date: string; title: string; changes: s
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.16.0", date: "2026-11-24", title: "History of YOLO, CLIP and VLM use",
+    changes: [
+      "New History tab: every call to YOLO, CLIP and the VLM made through the manager (module tabs, Analysis, VLM tools, workflows, agents) with time, source, status, latency and a short summary of the result.",
+      "Statistics per module (calls, errors, average time) and per source; filter by module, source, period and text.",
+      "Open a call to see its picture (with detections), prompt, answer and settings; use the picture again in YOLO, CLIP or the VLM.",
+    ],
+  },
+  {
     version: "0.15.0", date: "2026-11-24", title: "Adjust keypoints in Analysis",
     changes: [
       "Analysis → Video keypoints: “✎ Adjust keypoints” on the selected frame (or “Place keypoints” when no dancer was found): drag the points, save; they replace the frame's keypoints (marked ✎ adjusted) and the movement is recognised again.",

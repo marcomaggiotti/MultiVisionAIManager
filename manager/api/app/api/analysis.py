@@ -6,7 +6,7 @@ import asyncio
 import json
 from typing import Annotated
 
-from fastapi import APIRouter, File, Form, HTTPException, Response, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 
 from app.analysis import run_analysis
@@ -37,6 +37,7 @@ def _parse_options(options: str | None) -> dict:
 
 @router.post("/api/analyze")
 async def analyze(
+    request: Request,
     settings: CurrentSettings,
     registry: Registry,
     store: Store,
@@ -63,7 +64,9 @@ async def analyze(
         if problem and problem != "not registered"
     ]
 
-    result = await run_analysis(client, module_urls, pictures, requested_options, launch_errors)
+    result = await run_analysis(
+        client, module_urls, pictures, requested_options, launch_errors, recorder=request.app.state.recorder
+    )
     if save:
         result["id"] = store.save_analysis(result, [picture.image for picture in pictures], title)
     return result

@@ -5,6 +5,7 @@ import LiveStudio from "./pages/LiveStudio";
 import Compare from "./pages/Compare";
 import Library from "./pages/Library";
 import Admin from "./pages/Admin";
+import History from "./pages/History";
 import Dashboard from "./pages/Dashboard";
 import Sessions from "./pages/Sessions";
 import Analyze from "./pages/Analyze";
@@ -20,6 +21,7 @@ const NAV = [
   { to: "/library", label: "Library" },
   { to: "/sessions", label: "Sessions" },
   { to: "/analysis", label: "Analysis" },
+  { to: "/history", label: "History" },
   { to: "/modules", label: "Modules" },
   { to: "/yolo", label: "YOLO" },
   { to: "/clip", label: "CLIP" },
@@ -80,6 +82,7 @@ function Shell() {
           <Route path="/clip" element={<ClipStudio />} />
           <Route path="/vlm" element={<VlmStudio />} />
           <Route path="/admin" element={<Admin />} />
+          <Route path="/history" element={<History />} />
         </Routes>
       </main>
     </div>

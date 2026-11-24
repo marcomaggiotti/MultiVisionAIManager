@@ -37,7 +37,7 @@ async def run(
     """Run an agent to its answer; the reply holds every thought and tool call."""
     agent_request = parse_form_json(AgentRequest, request)
     pictures = await load_pictures(library, agent_request.video, images)
-    capabilities = Capabilities(http_request.app.state.services, pictures)
+    capabilities = Capabilities(http_request.app.state.services, pictures, source="Agent")
     model = create_chat_model(
         agent_request.model, capabilities.services.vlm, pictures.jpegs, agent_request.show_pictures
     )

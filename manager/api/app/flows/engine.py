@@ -63,7 +63,7 @@ class FlowRunner:
             raise InvalidFlowError("the workflow cannot run: " + "; ".join(problems))
         run = FlowRun(pictures=pictures)
         run.variables = {"input": pictures.description, "last": "", "answer": ""}
-        environment = FlowEnvironment(Capabilities(self.services, pictures), self.prompts)
+        environment = FlowEnvironment(Capabilities(self.services, pictures, source="Workflow"), self.prompts)
         run.engine = self._compile(graph, run, environment)
         run.current = graph.start().id
         self._keep(run)

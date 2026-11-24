@@ -113,7 +113,7 @@ async def run_vlm_ask(call: NodeCall) -> NodeOutcome:
     text, options = _prompt_of(call.settings, call.environment.prompts)
     call.step.prompt = render(text, call.variables)
     pictures = capabilities.pictures.jpegs if call.settings["use_pictures"] else []
-    answer = await capabilities.services.vlm.ask(call.step.prompt, pictures, options)
+    answer = await capabilities.services.vlm.ask(call.step.prompt, pictures, options, source=capabilities.source)
     call.step.latency_ms = answer.latency_ms
     return _answer(call, answer.text)
 

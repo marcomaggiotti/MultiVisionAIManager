@@ -74,7 +74,9 @@ class VlmChatModel(BaseChatModel):
     ) -> ChatResult:
         system, prompt = self._as_text(messages)
         pictures = self.pictures if self.show_pictures else []
-        answer = await self.client.ask(prompt, pictures, AskOptions(system=system, max_new_tokens=self.max_new_tokens))
+        answer = await self.client.ask(
+            prompt, pictures, AskOptions(system=system, max_new_tokens=self.max_new_tokens), source="Agent"
+        )
         text = answer.text
         for marker in stop or []:  # the module has no stop sequences: cut afterwards
             text = text.split(marker)[0]

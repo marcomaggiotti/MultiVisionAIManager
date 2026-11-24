@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request, Response
@@ -10,6 +11,7 @@ from fastapi.responses import StreamingResponse
 from starlette.background import BackgroundTask
 
 from app.api.dependencies import HttpClient, Module, Registry
+from app.history.recorder import MAX_FORM_BYTES, UsageRecorder
 from app.modules import LaunchError, ModuleRegistry, RegisteredModule
 
 router = APIRouter()
@@ -74,20 +76,28 @@ async def module_logs(module: Module, tail: int = 200) -> dict:
 async def proxy_to_module(
     path: str, request: Request, module: Module, registry: Registry, client: HttpClient
 ) -> Response:
-    """Forward a call to the module (streamed both ways), launching it first if needed."""
+    """Forward a call to the module (streamed both ways), launching it first if needed.
+
+    Calls that do something (not GET) are recorded in the history: their body is read
+    once (up to MAX_FORM_BYTES) and a JSON answer is read for its summary.
+    """
     problem = await registry.ensure_running(module.name)
     if problem:
         raise HTTPException(503, f"module {module.name!r}: {problem}")
     forwarded_headers = {
         name: value for name, value in request.headers.items() if name.lower() not in HOP_BY_HOP_HEADERS
     }
+    recorded = request.method != "GET"
+    declared_size = int(request.headers.get("content-length") or 0)
+    body = await request.body() if recorded and declared_size <= MAX_FORM_BYTES else None
     upstream_request = client.build_request(
         request.method,
         f"{module.url}/{path}",
         params=request.query_params,
         headers=forwarded_headers,
-        content=request.stream(),
+        content=body if body is not None else request.stream(),
     )
+    started = time.perf_counter()
     try:
         upstream = await client.send(upstream_request, stream=True)
     except httpx.HTTPError as error:
@@ -100,7 +110,30 @@ async def proxy_to_module(
     if location.startswith(module.url):  # keep redirects inside the proxy
         response_headers["location"] = f"/api/modules/{module.name}{location[len(module.url) :]}"
 
-    async def body():
+    recorder: UsageRecorder = request.app.state.recorder
+    is_json = upstream.headers.get("content-type", "").startswith("application/json")
+    if recorded and is_json and "content-encoding" not in upstream.headers:
+        answer = (
+            upstream.content
+            if upstream.is_stream_consumed
+            else b"".join([chunk async for chunk in upstream.aiter_raw()])
+        )
+        await upstream.aclose()
+        await recorder.record_proxied(
+            module=module.name, path=path, method=request.method, query=dict(request.query_params),
+            content_type=request.headers.get("content-type", ""), body=body, referer=request.headers.get("referer"),
+            status_code=upstream.status_code, answer_bytes=answer, latency_ms=(time.perf_counter() - started) * 1000,
+        )  # fmt: skip
+        response_headers.pop("content-length", None)
+        return Response(answer, status_code=upstream.status_code, headers=response_headers)
+    if recorded:
+        await recorder.record_proxied(
+            module=module.name, path=path, method=request.method, query=dict(request.query_params),
+            content_type=request.headers.get("content-type", ""), body=body, referer=request.headers.get("referer"),
+            status_code=upstream.status_code, answer_bytes=None, latency_ms=(time.perf_counter() - started) * 1000,
+        )  # fmt: skip
+
+    async def body_chunks():
         if upstream.is_stream_consumed:  # already read (e.g. by a test transport)
             yield upstream.content
         else:
@@ -108,5 +141,8 @@ async def proxy_to_module(
                 yield chunk
 
     return StreamingResponse(
-        body(), status_code=upstream.status_code, headers=response_headers, background=BackgroundTask(upstream.aclose)
+        body_chunks(),
+        status_code=upstream.status_code,
+        headers=response_headers,
+        background=BackgroundTask(upstream.aclose),
     )
