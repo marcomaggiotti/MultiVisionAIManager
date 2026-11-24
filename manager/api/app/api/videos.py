@@ -19,10 +19,13 @@ from app.api.dependencies import Library, Store
 from app.live.adjustments import shift_adjustments
 from app.media import ffmpeg
 from app.media.cutting import CutMode, cut_video, output_suffix, safe_file_name
+from app.media.keypoint_tracks import KeypointTrackStore, TrackFrame
 from app.media.library import LibraryVideo, VideoLibrary
 from app.storage import HistoryStore
 
 router = APIRouter(tags=["videos"])
+FRAME_MAX_SIDE = 1280
+FRAME_CACHE_ENTRIES = 5000  # cached frame pictures kept on disk (the oldest go first)
 PREVIEW_FRAME_MAX_SIDE = 320
 MAX_SAMPLED_FRAMES = 16
 
@@ -47,9 +50,15 @@ def _carry_adjustments_over(store: HistoryStore, source_key: str | None, new_key
 
 
 # --- library ------------------------------------------------------------------------
+def get_tracks(request: Request) -> KeypointTrackStore:
+    return request.app.state.keypoint_tracks
+
+
 @router.get("/api/videos")
-def list_videos(library: Library) -> list[dict]:
-    return [video.to_api() for video in library.list()]
+def list_videos(library: Library, request: Request) -> list[dict]:
+    """The videos, with how many analysed frames (keypoints) each has saved."""
+    counts = get_tracks(request).counts()
+    return [{**video.to_api(), "keypoint_frames": counts.get(video.media_key, 0)} for video in library.list()]
 
 
 @router.post("/api/videos", status_code=201)
@@ -88,6 +97,7 @@ def update_video(video_id: str, update: VideoUpdate, library: Library) -> dict:
 @router.delete("/api/videos/{video_id}", status_code=204)
 def delete_video(video_id: str, library: Library) -> Response:
     library.delete(video_id)
+    shutil.rmtree(library.folder.parent / "frame-cache" / Path(video_id).name, ignore_errors=True)
     return Response(status_code=204)
 
 
@@ -145,6 +155,74 @@ async def cut_library_video(video_id: str, cut: Annotated[CutRequest, Body()], l
         video = await library.add(target, file_name, origin="cut", parent_id=source.id)
     copied = _carry_adjustments_over(store, source.media_key, video.media_key, cut.start, cut.end)
     return {**video.to_api(), "adjustments_copied": copied}
+
+
+# --- keypoint tracks (saved from the live studio, read by the Analysis tab) -----------
+class TrackFrameIn(BaseModel):
+    source_time: float = Field(ge=0)
+    keypoints: list[list[float]] | None = None
+    box: dict | None = None
+    image: dict | None = None
+    movement: str | None = None
+    adjusted: bool = False
+
+
+class TrackSave(BaseModel):
+    media_key: str = Field(min_length=1)
+    session_id: str | None = None
+    frames: list[TrackFrameIn] = Field(max_length=20000)
+
+
+@router.put("/api/keypoint-tracks")
+def save_keypoint_track(track: TrackSave, request: Request) -> dict:
+    """Associate the keypoints of each analysed frame with the video (at its time in it)."""
+    frames = [TrackFrame(**frame.model_dump(), session_id=track.session_id) for frame in track.frames]
+    total = get_tracks(request).save(track.media_key, frames)
+    return {"saved": len(frames), "total": total}
+
+
+@router.get("/api/videos/{video_id}/keypoints")
+def video_keypoints(
+    video_id: str,
+    library: Library,
+    request: Request,
+    start: Annotated[float, Query(ge=0)] = 0,
+    end: Annotated[float | None, Query(ge=0)] = None,
+) -> dict:
+    """The saved frames of the video between ``start`` and ``end`` (seconds), in time order."""
+    video = library.get(video_id)
+    frames = get_tracks(request).frames(video.media_key, start, end)
+    return {"video": video.to_api(), "frames": [frame.to_api() for frame in frames]}
+
+
+@router.delete("/api/videos/{video_id}/keypoints")
+def delete_video_keypoints(video_id: str, library: Library, request: Request) -> dict:
+    return {"deleted": get_tracks(request).delete(library.get(video_id).media_key)}
+
+
+@router.get("/api/videos/{video_id}/frame")
+async def video_frame(
+    video_id: str,
+    library: Library,
+    t: Annotated[float, Query(ge=0, description="Time in the video, seconds")],
+    max_side: Annotated[int, Query(ge=32, le=FRAME_MAX_SIDE)] = 640,
+) -> Response:
+    """The picture at time ``t`` (JPEG), cached on disk: thumbnails of many frames load fast."""
+    video = library.get(video_id)
+    cache = library.folder.parent / "frame-cache" / video.id
+    path = cache / f"{t:.3f}-{max_side}.jpg"
+    if not path.exists():
+        jpeg = await ffmpeg.frame_at(library.file_path(video_id), min(t, video.duration), max_side)
+        cache.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(jpeg)
+        _trim_cache(cache.parent)
+    return Response(path.read_bytes(), media_type="image/jpeg", headers={"Cache-Control": "public, max-age=86400"})
+
+
+def _trim_cache(root: Path) -> None:
+    files = sorted(root.glob("*/*.jpg"), key=lambda file: file.stat().st_mtime)
+    for file in files[:-FRAME_CACHE_ENTRIES]:
+        file.unlink(missing_ok=True)
 
 
 # --- cutting a video chosen in the browser ------------------------------------------

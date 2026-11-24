@@ -141,3 +141,47 @@ def test_cut_of_a_browser_video_can_be_kept_in_the_library(make_client, sample_v
         assert response.status_code == 200
         kept = client.get(f"/api/videos/{response.headers['x-video-id']}").json()
         assert kept["source"] == "cut" and kept["size"] == len(response.content)
+
+
+@needs_ffmpeg
+def test_keypoint_tracks_by_time_range_and_frames(make_client, sample_video: Path, tmp_path: Path):
+    with make_client([]) as client:
+        with sample_video.open("rb") as video:
+            saved = client.post("/api/videos", files={"files": ("class.mp4", video)}).json()["saved"][0]
+        points = [[10.0 + i, 20.0, 0.9] for i in range(17)]
+        frames = [{"source_time": t / 10, "keypoints": points, "box": {"x1": 0, "y1": 0, "x2": 9, "y2": 9},
+                   "image": {"width": 160, "height": 120}, "movement": "plié"} for t in range(0, 60, 5)]  # fmt: skip
+        frames.append({"source_time": 3.0, "keypoints": None})  # no dancer at 3 s: replaces the 3.0 s frame
+        result = client.put(
+            "/api/keypoint-tracks", json={"media_key": saved["media_key"], "session_id": "s1", "frames": frames}
+        )
+        assert result.json() == {"saved": 13, "total": 12}
+        assert client.get("/api/videos").json()[0]["keypoint_frames"] == 12
+
+        part = client.get(f"/api/videos/{saved['id']}/keypoints", params={"start": 1, "end": 3}).json()
+        assert [frame["source_time"] for frame in part["frames"]] == [1.0, 1.5, 2.0, 2.5, 3.0]
+        assert part["frames"][0]["keypoints"][16] == [26.0, 20.0, 0.9] and part["frames"][-1]["keypoints"] is None
+        assert part["frames"][0]["session_id"] == "s1"
+
+        picture = client.get(f"/api/videos/{saved['id']}/frame", params={"t": 2.5, "max_side": 80})
+        assert picture.headers["content-type"] == "image/jpeg" and picture.content[:2] == b"\xff\xd8"
+        cached = tmp_path / "videos" / ".." / "frame-cache" / saved["id"] / "2.500-80.jpg"
+        assert (
+            cached.exists()
+            and client.get(f"/api/videos/{saved['id']}/frame", params={"t": 2.5, "max_side": 80}).content
+            == picture.content
+        )
+
+        # a new analysis of 1-2 s replaces the saved frames of that span only
+        again = [{"source_time": 1.25, "keypoints": points}, {"source_time": 1.75, "keypoints": points}]
+        result = client.put("/api/keypoint-tracks", json={"media_key": saved["media_key"], "frames": again}).json()
+        assert result == {"saved": 2, "total": 13}  # 1.5 s replaced by 1.25 and 1.75
+        times = [
+            f["source_time"]
+            for f in client.get(f"/api/videos/{saved['id']}/keypoints", params={"end": 2.5}).json()["frames"]
+        ]
+        assert times == [0.0, 0.5, 1.0, 1.25, 1.75, 2.0, 2.5]
+
+        assert client.delete(f"/api/videos/{saved['id']}/keypoints").json() == {"deleted": 13}
+        client.delete(f"/api/videos/{saved['id']}")
+        assert not cached.parent.exists()

@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { api, form, num, pct, post } from "../api";
 import { useAction, useLoad, useObjectUrls } from "../hooks";
-import { Bars, Card, Check, ErrorBox, Field, Files, Json, Page, Slider, Thumbs } from "../components/ui";
+import { Bars, Card, Check, ErrorBox, Field, Files, Json, Page, Slider, Tabs, Thumbs } from "../components/ui";
+import { VideoKeypoints } from "../analysis/VideoKeypoints";
 import { ImageOverlay } from "../components/ImageOverlay";
 import { LineChart } from "../components/charts";
 
@@ -13,7 +14,21 @@ const PROMPTS: Record<string, string> = {
 
 const ANGLES = ["left_knee", "right_knee", "left_leg_elevation", "right_leg_elevation", "leg_spread", "left_arm_elevation", "right_arm_elevation", "torso_tilt"];
 
+type View = "video" | "pictures";
+
+/** Analysis: the keypoints saved for a video, frame by frame; or a full multi-module
+ * analysis of pictures. */
 export default function Analyze() {
+  const [view, setView] = useState<View>("video");
+  return (
+    <Page title="Analysis" subtitle="Video keypoints: every analysed frame of a library video, by time range. Pictures: pose (YOLO) → angles → step ranking (CLIP) → explanation (VLM) → fused result.">
+      <Tabs value={view} onChange={setView} tabs={[["video", "Video keypoints"], ["pictures", "Pictures analysis"]]} />
+      {view === "video" ? <VideoKeypoints /> : <PicturesAnalysis />}
+    </Page>
+  );
+}
+
+function PicturesAnalysis() {
   const [files, setFiles] = useState<File[]>([]);
   const urls = useObjectUrls(files);
   const [title, setTitle] = useState("");
@@ -45,7 +60,7 @@ export default function Analyze() {
   };
 
   return (
-    <Page title="Ballet analysis" subtitle="One picture or a sequence of pictures → pose (YOLO) → joint angles and cues → step ranking (CLIP) → explanation (VLM) → fused result.">
+    <>
       <div className="grid side">
         <div className="stack">
           <Card title="Pictures">
@@ -88,7 +103,7 @@ export default function Analyze() {
         </div>
         <div className="stack">{loaded ? <Result result={loaded.result} frames={loaded.frames} /> : <Card><p className="muted">Results appear here.</p></Card>}</div>
       </div>
-    </Page>
+    </>
   );
 }
 

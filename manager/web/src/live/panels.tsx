@@ -1,11 +1,23 @@
-import { ReactNode, useEffect, useRef, useState } from "react";
+import { ReactNode, createContext, useContext, useEffect, useRef, useState } from "react";
 import { EDGES, JOINT_NAMES, Recorded, STATUS_COLOR, Status, VIS, Vocabulary, stepColor } from "./types";
 import { Overlay, renderFrame } from "./drawing";
 
+/** A panel slot of the studio: its letter and the view chosen in it (the title becomes a chooser). */
+export type PanelSlot = { letter: string; choice: string; options: { id: string; label: string }[]; onChoose: (id: string) => void };
+export const PanelSlotContext = createContext<PanelSlot | null>(null);
+
 export function Panel({ letter, title, children, corner }: { letter: string; title: string; children: ReactNode; corner?: ReactNode }) {
+  const slot = useContext(PanelSlotContext);
   return (
     <div className="vpanel">
-      <div className="tag"><b>{letter}</b>{title}</div>
+      <div className="tag">
+        <b>{slot?.letter ?? letter}</b>
+        {slot ? (
+          <select className="panel-choice" value={slot.choice} onChange={(event) => slot.onChoose(event.target.value)} aria-label={`Panel ${slot.letter}`} title="Choose what this panel shows">
+            {slot.options.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+          </select>
+        ) : title}
+      </div>
       {corner && <div className="corner">{corner}</div>}
       {children}
     </div>

@@ -73,6 +73,15 @@ persist are written to the feedback log, with the time, so you can jump back to 
   under the timeline collects every analysed frame: a trajectory chart of the followed
   keypoint, a frame table (click to go there), CSV (one row per frame and keypoint) and
   JSON download. Saved sessions include the keypoints of each frame.
+- **Panels A-D**: each panel's title is a chooser: camera, body-part feedback, skeletal
+  tracking, pose recognition, key positions, joint angles, or a chart of the last 10 s
+  (motion energy, leg elevation, knee angles, arm elevation) following the shown frame.
+- **Video keypoints** (*Save*): each analysed frame's keypoints are stored with the library
+  video at its time in the video (a new analysis replaces the part it covers). *Analysis →
+  Video keypoints*: pick a video and a time range; every saved frame appears (thumbnail with
+  skeleton, from `/api/videos/{id}/frame?t=`); click one (← / →) for the large frame and its
+  17 keypoints, plus a trajectory chart and CSV of the range. API: `PUT /api/keypoint-tracks`,
+  `GET/DELETE /api/videos/{id}/keypoints?start&end`.
 - **Snapshot library**: every snapshot is saved in the manager (the clean frame, with its
   video, time, recognised movement and corrections): *Library → 📷 Snapshots* to view,
   annotate, download, delete or open one in YOLO, CLIP or the VLM; those tabs (and the VLM /
