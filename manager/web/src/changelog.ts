@@ -4,6 +4,13 @@ export type Release = { version: string; date: string; title: string; changes: s
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.15.0", date: "2026-11-24", title: "Adjust keypoints in Analysis",
+    changes: [
+      "Analysis → Video keypoints: “✎ Adjust keypoints” on the selected frame (or “Place keypoints” when no dancer was found): drag the points, save; they replace the frame's keypoints (marked ✎ adjusted) and the movement is recognised again.",
+      "The correction is also kept as a keypoint adjustment of that moment: analysing the video again in the live studio uses it.",
+    ],
+  },
+  {
     version: "0.14.0", date: "2026-11-24", title: "Video keypoints in Analysis, choose the studio's panels",
     changes: [
       "Save in the live studio also stores each analysed frame's keypoints with the library video (at its time in the video); analysing again replaces the frames of the part analysed.",
