@@ -12,7 +12,7 @@ const RIGHT_KNEE = 14;
 
 const partColor = (parts: Record<string, Status> | undefined, part: string) => STATUS_COLOR[parts?.[part] ?? "none"];
 
-export function drawPoseOverlay(context: CanvasRenderingContext2D, result: FrameResult, overlays: Set<Overlay>, withLabels = true) {
+export function drawPoseOverlay(context: CanvasRenderingContext2D, result: FrameResult, overlays: Set<Overlay>, withLabels = true, highlightKeypoint: number | null = null) {
   const dancer = result.dancer;
   const evaluation = result.evaluation;
   if (!dancer) return;
@@ -52,6 +52,15 @@ export function drawPoseOverlay(context: CanvasRenderingContext2D, result: Frame
     });
   }
 
+  if (highlightKeypoint != null && keypoints[highlightKeypoint]) {
+    const [x, y] = keypoints[highlightKeypoint];
+    context.strokeStyle = "#ffd23f";
+    context.lineWidth = lineWidth;
+    context.beginPath();
+    context.arc(x, y, lineWidth * 5, 0, 2 * Math.PI);
+    context.stroke();
+  }
+
   if (overlays.has("angles") && evaluation && withLabels) {
     context.font = `${Math.round(lineWidth * 5 + 6)}px sans-serif`;
     context.fillStyle = LABEL_COLOR;
@@ -66,12 +75,12 @@ export function drawPoseOverlay(context: CanvasRenderingContext2D, result: Frame
 }
 
 /** Draw the recorded frame (and optionally its overlay) on a canvas of the picture's size. */
-export async function renderFrame(canvas: HTMLCanvasElement, frame: Recorded, overlays: Set<Overlay>, withLabels = true) {
+export async function renderFrame(canvas: HTMLCanvasElement, frame: Recorded, overlays: Set<Overlay>, withLabels = true, highlightKeypoint: number | null = null) {
   const bitmap = await createImageBitmap(frame.blob);
   canvas.width = bitmap.width;
   canvas.height = bitmap.height;
   const context = canvas.getContext("2d")!;
   context.drawImage(bitmap, 0, 0);
-  drawPoseOverlay(context, frame.result, overlays, withLabels);
+  drawPoseOverlay(context, frame.result, overlays, withLabels, highlightKeypoint);
   bitmap.close();
 }

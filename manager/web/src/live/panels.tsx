@@ -27,11 +27,11 @@ function useSize<T extends HTMLElement>() {
 const partColor = (parts: Record<string, Status> | undefined, part: string) => STATUS_COLOR[parts?.[part] ?? "none"] ?? STATUS_COLOR.none;
 
 /** A · the picture that was analysed, with the skeleton coloured by feedback. */
-export function CameraPanel({ frame, overlays, mirror }: { frame: Recorded | null; overlays: Set<Overlay>; mirror: boolean }) {
+export function CameraPanel({ frame, overlays, mirror, highlightKeypoint = null }: { frame: Recorded | null; overlays: Set<Overlay>; mirror: boolean; highlightKeypoint?: number | null }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
-    if (frame && canvas.current) void renderFrame(canvas.current, frame, overlays, !mirror); // mirrored text would be unreadable
-  }, [frame, overlays, mirror]);
+    if (frame && canvas.current) void renderFrame(canvas.current, frame, overlays, !mirror, highlightKeypoint); // mirrored text would be unreadable
+  }, [frame, overlays, mirror, highlightKeypoint]);
   return (
     <Panel letter="A" title="Camera · pose overlay"
       corner={frame?.result.adjusted ? <span className="adjusted-tag" title="Keypoints adjusted by hand">✎ adjusted</span> : undefined}>
