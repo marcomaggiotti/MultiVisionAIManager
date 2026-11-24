@@ -4,6 +4,14 @@ export type Release = { version: string; date: string; title: string; changes: s
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.14.0", date: "2026-11-24", title: "Video keypoints in Analysis, choose the studio's panels",
+    changes: [
+      "Save in the live studio also stores each analysed frame's keypoints with the library video (at its time in the video); analysing again replaces the frames of the part analysed.",
+      "Analysis → Video keypoints: choose a video and a time range (e.g. 10 to 20 s): every saved frame as a thumbnail with its skeleton; click one (or ← / →) to see it large with its 17 keypoints; trajectory chart and CSV of the range.",
+      "Live studio panels A-D: choose what each one shows (camera, body-part feedback, skeletal tracking, pose recognition, key positions, joint angles, motion energy, leg elevation, knee angles, arm elevation); charts follow the shown frame; the choice is remembered.",
+    ],
+  },
+  {
     version: "0.13.0", date: "2026-11-24", title: "Live studio: keypoints in real time, per-frame collection",
     changes: [
       "Right panel “Keypoints · live”: the 17 keypoints (x, y in pixels, visibility) of the shown frame, updated as the video plays; hover rings a point in panel A, click follows it.",

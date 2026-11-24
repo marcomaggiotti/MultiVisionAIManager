@@ -2,7 +2,8 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { api, form, json, post } from "../api";
 import { useLoad } from "../hooks";
 import { Slider } from "../components/ui";
-import { BodyMap, CameraPanel, PoseCard, Skeleton3D } from "../live/panels";
+import { BodyMap, CameraPanel, PanelSlotContext, PoseCard, Skeleton3D } from "../live/panels";
+import { ChartPanels, JointAnglesPanel, KeyPositionsPanel } from "../live/morePanels";
 import { PlayerActions, Timeline } from "../live/Timeline";
 import { Source } from "../live/useLive";
 import { useLiveSession } from "../live/LiveSessionContext";
@@ -23,6 +24,30 @@ const PART_LABEL: Record<string, string> = {
 };
 const FAMILY_LABEL: Record<string, string> = { positions: "Positions", barre: "Barre", adagio: "Adagio", turns: "Turns", allegro: "Allegro", jumps: "Jumps" };
 
+/** What a panel of the studio can show (each of the four chooses one). */
+const PANEL_VIEWS = [
+  { id: "camera", label: "Camera · pose overlay" },
+  { id: "bodymap", label: "Body-part feedback" },
+  { id: "skeleton", label: "Skeletal tracking" },
+  { id: "pose", label: "Pose recognition" },
+  { id: "keypoints", label: "Key positions" },
+  { id: "angles", label: "Joint angles" },
+  { id: "motion", label: "Motion energy (chart)" },
+  { id: "legs", label: "Leg elevation (chart)" },
+  { id: "knees", label: "Knee angles (chart)" },
+  { id: "arms", label: "Arm elevation (chart)" },
+];
+const DEFAULT_PANELS = ["camera", "bodymap", "skeleton", "pose"];
+const PANELS_KEY = "live-studio-panels";
+
+function savedPanels(): string[] {
+  try {
+    const saved = JSON.parse(localStorage.getItem(PANELS_KEY) ?? "null");
+    if (Array.isArray(saved) && saved.length === 4 && saved.every((id) => PANEL_VIEWS.some((view) => view.id === id))) return saved;
+  } catch { /* private mode or broken value */ }
+  return DEFAULT_PANELS;
+}
+
 export default function LiveStudio() {
   // Kept by the app while other tabs are shown: the video goes on where it was.
   const { live, playback, source, setSource, files, setFiles, overlays, setOverlays, mirror, setMirror } = useLiveSession();
@@ -34,6 +59,12 @@ export default function LiveStudio() {
   // the keypoint followed: ringed in panel A, charted in the collection (hovering previews another)
   const [followedKeypoint, setFollowedKeypoint] = useState(15);
   const [hoveredKeypoint, setHoveredKeypoint] = useState<number | null>(null);
+  const [panelChoices, setPanelChoices] = useState<string[]>(savedPanels);
+  const choosePanel = (slot: number, id: string) => {
+    const next = panelChoices.map((choice, index) => (index === slot ? id : choice));
+    setPanelChoices(next);
+    try { localStorage.setItem(PANELS_KEY, JSON.stringify(next)); } catch { /* not kept */ }
+  };
   const [dancer, setDancer] = useState(() => { try { return localStorage.getItem("dancer") ?? ""; } catch { return ""; } });
   const [settings, setSettings] = useState(live.settings);
   const [busy, setBusy] = useState<string | null>(null);
@@ -104,7 +135,22 @@ export default function LiveStudio() {
         counts, events: live.events, comments: live.comments, series,
       };
       const r = await api("/api/live/sessions", json("POST", body));
-      live.addComment({ t: frame?.result.t ?? 0, pose: null, status: "ok", message: `Session saved (${r.id}): open it in the Sessions tab`, kind: "coach" });
+      // the keypoints of each analysed frame also go with the video itself (Analysis → Video keypoints)
+      const byVideo = new Map<string, typeof frames>();
+      frames.filter((f) => f.mediaKey && f.sourceTime != null).forEach((f) => byVideo.set(f.mediaKey!, [...(byVideo.get(f.mediaKey!) ?? []), f]));
+      const tracks: string[] = [];
+      for (const [mediaKey, videoFrames] of byVideo) {
+        const saved = await api<{ saved: number; total: number }>("/api/keypoint-tracks", json("PUT", {
+          media_key: mediaKey, session_id: r.id,
+          frames: videoFrames.map((f) => ({
+            source_time: f.sourceTime, keypoints: f.result.dancer?.keypoints ?? null, box: f.result.dancer?.box ?? null,
+            image: f.result.image, movement: f.result.current.step ?? f.result.evaluation?.pose?.step ?? null, adjusted: !!f.result.adjusted,
+          })),
+        }));
+        tracks.push(`${saved.saved} frames of ${mediaKey.split("|")[0]} (${saved.total} saved for this video)`);
+      }
+      const where = tracks.length ? ` Keypoints: ${tracks.join("; ")}: Analysis → Video keypoints.` : "";
+      live.addComment({ t: frame?.result.t ?? 0, pose: null, status: "ok", message: `Session saved (${r.id}): open it in the Sessions tab.${where}`, kind: "coach" });
     } catch (e) { live.setError(e instanceof Error ? e.message : String(e)); }
     setBusy(null);
   };
@@ -130,6 +176,22 @@ export default function LiveStudio() {
   };
   const parts = frame?.result.evaluation?.parts;
   const partMessage = (p: string) => frame?.result.evaluation?.feedback.find((f) => f.part === p && f.status !== "ok")?.message;
+
+  const renderPanel = (choice: string) => {
+    const chart = { frames, shownIndex: playback.shownIndex };
+    switch (choice) {
+      case "camera": return <CameraPanel frame={frame} overlays={overlays} mirror={mirror} highlightKeypoint={hoveredKeypoint ?? followedKeypoint} />;
+      case "bodymap": return <BodyMap frame={frame} />;
+      case "skeleton": return <Skeleton3D frame={frame} />;
+      case "keypoints": return <KeyPositionsPanel frame={frame} highlighted={hoveredKeypoint ?? followedKeypoint} />;
+      case "angles": return <JointAnglesPanel frame={frame} />;
+      case "motion": return <ChartPanels.motion {...chart} />;
+      case "legs": return <ChartPanels.legs {...chart} />;
+      case "knees": return <ChartPanels.knees {...chart} />;
+      case "arms": return <ChartPanels.arms {...chart} />;
+      default: return <PoseCard frame={frame} vocab={vocab} />;
+    }
+  };
 
   return (
     <div className="studio">
@@ -227,10 +289,11 @@ export default function LiveStudio() {
         </div>
         {live.error && <div className="error">{live.error}</div>}
         <div className="panels">
-          <CameraPanel frame={frame} overlays={overlays} mirror={mirror} highlightKeypoint={hoveredKeypoint ?? followedKeypoint} />
-          <BodyMap frame={frame} />
-          <Skeleton3D frame={frame} />
-          <PoseCard frame={frame} vocab={vocab} />
+          {panelChoices.map((choice, slot) => (
+            <PanelSlotContext.Provider key={slot} value={{ letter: "ABCD"[slot], choice, options: PANEL_VIEWS, onChoose: (id) => choosePanel(slot, id) }}>
+              {renderPanel(choice)}
+            </PanelSlotContext.Provider>
+          ))}
         </div>
         <Timeline frames={frames} index={playback.shownIndex} version={live.version} vocab={vocab}
           player={playback.player} actions={playerActions} />

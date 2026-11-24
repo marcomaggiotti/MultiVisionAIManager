@@ -1,6 +1,6 @@
 [project]
 name = "multivision-manager"
-version = "0.13.0"
+version = "0.14.0"
 description = "Hub of the MultiVision AI Manager: module registry, proxy and pipelines"
 requires-python = ">=3.10"
 dependencies = [

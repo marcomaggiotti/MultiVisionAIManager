@@ -29,6 +29,7 @@ from app.api import adjustments, agents, analysis, compare, flows, knowledge, li
 from app.api.errors import register_error_handlers
 from app.config import Settings, get_settings
 from app.flows.engine import FlowRunner
+from app.media.keypoint_tracks import KeypointTrackStore
 from app.media.library import VideoLibrary
 from app.media.snapshots import SnapshotLibrary
 from app.modules import ModuleRegistry, load_modules
@@ -71,6 +72,7 @@ def create_app(
         app.state.store = HistoryStore(data_dir)
         app.state.library = VideoLibrary(data_dir, app.state.store.database_path)
         app.state.snapshots = SnapshotLibrary(data_dir, app.state.store.database_path)
+        app.state.keypoint_tracks = KeypointTrackStore(app.state.store.database_path)
         app.state.prompts = DocumentStore(app.state.store.database_path, "prompt")
         app.state.workflows = DocumentStore(app.state.store.database_path, "workflow")
         app.state.vlm = VlmClient(app.state.registry, http_client, settings.proxy_timeout)
