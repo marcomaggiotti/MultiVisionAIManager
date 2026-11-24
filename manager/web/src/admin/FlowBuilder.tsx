@@ -1,13 +1,16 @@
 import { useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useLoad } from "../hooks";
-import { ErrorBox } from "../components/ui";
+import { ErrorBox, Field } from "../components/ui";
 import { InputChooser } from "../vlm/InputChooser";
 import { RunView } from "../vlm/RunView";
 import { useRun } from "../vlm/useRun";
 import { RunHighlight, Selection, WorkflowCanvas } from "../vlm/WorkflowCanvas";
 import { NODE_WIDTH } from "../vlm/workflowTemplates";
-import { Graph, Prompt, VlmInput } from "../vlm/types";
-import { Catalog, Flow, NodeSpec, checkFlow, deleteFlow, kindsFromCatalog, listFlows, newFlowNode, saveFlow } from "./catalog";
+import { Graph, NEW_PROMPT, Prompt, VlmInput, savePrompt } from "../vlm/types";
+import {
+  Catalog, Flow, NodeSpec, checkFlow, deleteFlow, fetchVlmModels, kindsFromCatalog, listFlows, newFlowNode, saveFlow,
+} from "./catalog";
 import { FlowInspector } from "./FlowInspector";
 import { FLOW_TEMPLATES } from "./flowTemplates";
 
@@ -16,13 +19,16 @@ const NEW_NODE_GAP = 50;
 
 /** The graphic AI workflow builder: nodes from the catalog (vision modules, the VLM,
  * LangChain agents, logic), connected by conditional arrows, run by LangGraph. */
-export function FlowBuilder({ catalog, prompts, input, onInput }: {
+export function FlowBuilder({ catalog, prompts, onPromptsChanged, input, onInput }: {
   catalog: Catalog;
   prompts: Prompt[];
+  onPromptsChanged: () => void;
   input: VlmInput | null;
   onInput: (input: VlmInput | null) => void;
 }) {
   const saved = useLoad(listFlows, []);
+  const vlmModels = useLoad(fetchVlmModels, []);
+  const [newPrompt, setNewPrompt] = useState<Prompt | null>(null);
   const [flow, setFlow] = useState<Flow>(() => FLOW_TEMPLATES[0].build(catalog));
   const [openedCount, setOpenedCount] = useState(0);
   const [dirty, setDirty] = useState(false);
@@ -90,16 +96,26 @@ export function FlowBuilder({ catalog, prompts, input, onInput }: {
     open({ name: imported.name ?? file.name, description: imported.description ?? "", graph: imported.graph });
   });
 
-  const addNode = (spec: NodeSpec) => {
+  const addNode = (spec: NodeSpec, data: Record<string, any> = {}) => {
     const nodes = flow.graph.nodes;
     const anchor = selection?.kind === "node" ? nodes.find((node) => node.id === selection.id) : null;
     const position = anchor
       ? { x: anchor.position.x + NODE_WIDTH + NEW_NODE_GAP, y: anchor.position.y }
       : { x: 60 + (nodes.length % 6) * 40, y: 60 + (nodes.length % 6) * 40 };
-    const node = newFlowNode(spec, position);
+    const node = newFlowNode(spec, position, data);
     changeGraph({ ...flow.graph, nodes: [...nodes, node] });
     setSelection({ kind: "node", id: node.id });
   };
+  const vlmSpec = catalog.nodes.find((spec) => spec.type === "vlm_ask");
+  /** An “Ask the VLM” node that uses a saved prompt. */
+  const addPromptNode = (prompt: Prompt) => vlmSpec && addNode(vlmSpec, { title: prompt.name, prompt_id: prompt.id, text: "" });
+  const createPrompt = (prompt: Prompt) => act(async () => {
+    const created = await savePrompt(prompt);
+    onPromptsChanged();
+    setNewPrompt(null);
+    addPromptNode(created);
+    setMessage(`Prompt “${created.name}” saved (also in VLM → Prompts) and added as a node.`);
+  });
   const run = async () => {
     setPanel("run");
     const found = (await checkFlow(flow.graph).catch(() => ({ problems: [] as string[] }))).problems;
@@ -160,6 +176,17 @@ export function FlowBuilder({ catalog, prompts, input, onInput }: {
                     <span style={{ color: spec.color }}>{spec.icon}</span> {spec.label}
                   </button>
                 ))}
+                {category === "Language" && vlmSpec && (
+                  <>
+                    {prompts.map((prompt) => (
+                      <button key={prompt.id} className="small ghost palette-prompt" style={{ borderColor: vlmSpec.color }}
+                        title={`Ask the VLM with the saved prompt:\n${prompt.text}`} onClick={() => addPromptNode(prompt)}>
+                        <span style={{ color: vlmSpec.color }}>{vlmSpec.icon}</span> {prompt.name}
+                      </button>
+                    ))}
+                    <button className="small ghost" onClick={() => setNewPrompt({ ...NEW_PROMPT, name: "" })} title="Write a prompt, save it and add it as a node">＋ New prompt</button>
+                  </>
+                )}
               </div>
             ))}
           </div>
@@ -176,7 +203,7 @@ export function FlowBuilder({ catalog, prompts, input, onInput }: {
           )}
           {problems && problems.length === 0 && panel === "edit" && <p className="small" style={{ color: "var(--good)" }}>✓ The workflow can run.</p>}
           {panel === "edit" ? (
-            <FlowInspector graph={flow.graph} selection={selection} onChange={changeGraph} onSelect={setSelection} catalog={catalog} prompts={prompts} />
+            <FlowInspector graph={flow.graph} selection={selection} onChange={changeGraph} onSelect={setSelection} catalog={catalog} prompts={prompts} vlmModels={vlmModels.data} />
           ) : (
             <>
               <InputChooser value={input} onChange={onInput} />
@@ -190,6 +217,28 @@ export function FlowBuilder({ catalog, prompts, input, onInput }: {
           )}
         </div>
       </div>
+      {newPrompt && createPortal(
+        <div className="modal-backdrop" onClick={() => setNewPrompt(null)}>
+          <div className="glass modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-label="New prompt">
+            <div className="row spread">
+              <h3 style={{ margin: 0 }}>New prompt</h3>
+              <button className="small ghost" onClick={() => setNewPrompt(null)} aria-label="Close">✕</button>
+            </div>
+            <Field label="Name"><input type="text" value={newPrompt.name} autoFocus placeholder="e.g. Turnout check" onChange={(event) => setNewPrompt({ ...newPrompt, name: event.target.value })} /></Field>
+            <Field label="Prompt" help="Variables: {{input}}, {{last}}, {{answer}}, node answers">
+              <textarea rows={5} value={newPrompt.text} onChange={(event) => setNewPrompt({ ...newPrompt, text: event.target.value })} />
+            </Field>
+            <Field label="System prompt (optional)">
+              <textarea rows={2} value={newPrompt.system} onChange={(event) => setNewPrompt({ ...newPrompt, system: event.target.value })} />
+            </Field>
+            <div className="row" style={{ gap: 8, justifyContent: "flex-end" }}>
+              <button className="ghost" onClick={() => setNewPrompt(null)}>Cancel</button>
+              <button onClick={() => createPrompt(newPrompt)} disabled={!newPrompt.name.trim() || !newPrompt.text.trim()}>Save and add</button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }

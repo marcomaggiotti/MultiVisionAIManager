@@ -22,7 +22,7 @@ ALIASES = {"prompt": "vlm_ask", "ask": "ask_user"}  # the VLM tab's names
 class FieldSpec:
     name: str
     label: str
-    kind: str  # text, textarea, number, boolean, select, multiselect, variable, prompt, model, choices, name
+    kind: str  # text, textarea, number, boolean, select, multiselect, variable, prompt, model, vlm_model, choices, name
     default: Any = None
     help: str = ""
     options: list[str] | None = None
@@ -94,6 +94,7 @@ NODE_SPECS = [
         "Asks the vision-language model a question about the frames (or text only).",
         nodes.run_vlm_ask,
         [
+            FieldSpec("model", "VLM model", "vlm_model", "", "Empty = the model loaded in the VLM module"),
             FieldSpec("prompt_id", "Saved prompt", "prompt", None, "Or write the prompt below"),
             FieldSpec("text", "Prompt", "textarea", "", "Variables: {{input}}, {{last}}, {{answer}}, node answers"),
             FieldSpec("system", "System prompt", "textarea", ""),

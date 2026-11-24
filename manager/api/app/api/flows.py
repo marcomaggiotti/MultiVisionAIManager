@@ -46,6 +46,15 @@ def catalog(settings: CurrentSettings) -> dict:
     }
 
 
+@router.get("/api/flows/vlm-models")
+async def vlm_models(request: Request) -> dict:
+    """The VLM models a node can ask (the module's catalogue and the loaded one).
+
+    The module is not started for this: when it is stopped, the catalogue is empty and
+    a model id can still be typed (it is loaded when the workflow runs)."""
+    return await request.app.state.vlm.models()
+
+
 class FlowDocument(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     description: str = Field("", max_length=4000)

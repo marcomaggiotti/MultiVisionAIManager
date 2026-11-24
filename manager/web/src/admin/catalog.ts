@@ -5,7 +5,7 @@ import { Graph, GraphNode, NodeKind } from "../vlm/types";
 export type FieldSpec = {
   name: string;
   label: string;
-  kind: "text" | "textarea" | "number" | "boolean" | "select" | "multiselect" | "variable" | "prompt" | "model" | "choices" | "name";
+  kind: "text" | "textarea" | "number" | "boolean" | "select" | "multiselect" | "variable" | "prompt" | "model" | "vlm_model" | "choices" | "name";
   default: any;
   help: string;
   options: string[] | null;
@@ -30,9 +30,14 @@ export type ToolInfo = { name: string; description: string; arguments: string[] 
 export type ModelChoice = { id: string; label: string; available: boolean; native_tools: boolean; reason: string };
 export type Catalog = { nodes: NodeSpec[]; tools: ToolInfo[]; models: ModelChoice[] };
 
+/** The VLM module's models (empty catalogue while the module is stopped). */
+export type VlmModel = { id: string; params_b?: number; vram_gb?: number; note?: string };
+export type VlmModels = { running: boolean; active: string | null; catalog: VlmModel[] };
+
 export type Flow = { id?: string; name: string; description: string; graph: Graph };
 
 export const fetchCatalog = () => api<Catalog>("/api/flows/catalog");
+export const fetchVlmModels = () => api<VlmModels>("/api/flows/vlm-models");
 export const listFlows = () => api<(Flow & { id: string })[]>("/api/flows");
 export const saveFlow = (flow: Flow) => {
   const { id, ...body } = flow;
@@ -62,7 +67,10 @@ export function kindsFromCatalog(catalog: Catalog, promptNames: Record<string, s
   return Object.fromEntries(catalog.nodes.map((spec) => [spec.type, {
     label: spec.label, icon: spec.icon, color: spec.color, hasInput: spec.has_input, hasOutput: spec.has_output, branching: spec.branching,
     summarize: (data: Record<string, any>) => {
-      if (spec.type === "vlm_ask" && data.prompt_id) return `prompt: ${promptNames[data.prompt_id] ?? "(deleted prompt)"}`;
+      if (spec.type === "vlm_ask") {
+        const prompt = data.prompt_id ? `prompt: ${promptNames[data.prompt_id] ?? "(deleted prompt)"}` : String(data.text ?? "") || spec.description;
+        return data.model ? `${shortModel(data.model)} · ${prompt}` : prompt;
+      }
       if (spec.type === "agent") return `${data.goal ?? ""} · ${(data.tools ?? []).length} tools`;
       if (spec.type === "decision") return `tests {{${data.test || "last"}}}`;
       if (!spec.summary) return spec.description;
@@ -71,6 +79,9 @@ export function kindsFromCatalog(catalog: Catalog, promptNames: Record<string, s
     },
   } satisfies NodeKind]));
 }
+
+/** "Qwen/Qwen2-VL-2B-Instruct" → "Qwen2-VL-2B-Instruct". */
+export const shortModel = (id: string) => id.split("/").pop() ?? id;
 
 const shortId = () => Math.random().toString(36).slice(2, 7);
 

@@ -210,7 +210,12 @@ Admin builder (React)          manager (FastAPI)
   number > … / otherwise) tried in order; any node can branch, loops are allowed. Check,
   save, save as, export / import JSON; template *Ballet coach*: YOLO checks a dancer is
   there → ballet rules and CLIP name the movement → you choose the depth → an agent
-  writes the coaching. *Run* shows the run live (current node, path taken, each node's
+  writes the coaching. **Different VLMs and prompts**: each *Ask the VLM* node has its own
+  *VLM model* (the loaded one, one of the VLM module's catalogue, or any model id; the
+  manager loads it with `PUT /v1/model` just before the node asks and keeps it for the
+  next node) and its own prompt; the *Language* group of the palette lists the saved
+  prompts (one click adds a node using it) and *＋ New prompt* writes and saves one
+  without leaving the builder. *Run* shows the run live (current node, path taken, each node's
   readings, the agent's thoughts and tool calls) and waits for your answers.
 - **How LangGraph runs it** (`app/flows/engine.py`): each flow is compiled to a
   `StateGraph` (state: the variables, the text the arrows test); a node calls its catalog

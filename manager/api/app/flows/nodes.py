@@ -104,6 +104,7 @@ def _prompt_of(settings: dict, prompts: DocumentStore) -> tuple[str, AskOptions]
         system=source.get("system") or None,
         max_new_tokens=int(source.get("max_new_tokens") or 256),
         temperature=float(source.get("temperature") or 0),
+        model=str(settings.get("model") or "").strip() or None,  # the node's choice, not the prompt's
     )
     return source.get("text", ""), options
 

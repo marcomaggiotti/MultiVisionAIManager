@@ -136,17 +136,19 @@ class UsageRecorder:
         source: str,
         request: dict | None = None,
         picture: bytes | None = None,
+        method: str = "POST",
         **post_arguments,
     ) -> httpx.Response:
-        """``client.post`` that also records the call (and still raises on network errors)."""
+        """``client.post`` (or ``method``) that also records the call (and still raises on network errors)."""
         action = urlparse(url).path
         started = time.perf_counter()
         try:
-            response = await client.post(url, **post_arguments)
+            response = await client.request(method, url, **post_arguments)
         except httpx.HTTPError as error:
             self.record(
-                module=module, action=action, source=source, status_code=None, request=request, picture=picture,
-                latency_ms=(time.perf_counter() - started) * 1000, error=f"{type(error).__name__}: {error}",
+                module=module, action=action, source=source, method=method, status_code=None, request=request,
+                picture=picture, latency_ms=(time.perf_counter() - started) * 1000,
+                error=f"{type(error).__name__}: {error}",
             )  # fmt: skip
             raise
         try:
@@ -154,7 +156,8 @@ class UsageRecorder:
         except ValueError:
             answer = None
         self.record(
-            module=module, action=action, source=source, status_code=response.status_code, request=request,
+            module=module, action=action, source=source, method=method, status_code=response.status_code,
+            request=request,
             picture=picture, latency_ms=(time.perf_counter() - started) * 1000, answer=answer,
         )  # fmt: skip
         return response
