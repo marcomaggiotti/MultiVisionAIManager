@@ -48,10 +48,11 @@ persist are written to the feedback log, with the time, so you can jump back to 
   Keypoints corrected in the studio or in Analysis are saved at once and replace the frame
   in the stored analysis and in the keypoint track. **📷 Snapshot** (S) keeps the frame in
   the snapshot library and opens it in *Analysis → Video keypoints*
-  (`/analysis?video=<id>&t=<seconds>`). The camera runs in real time until *■ Stop* (its
-  *Save* stays manual); pictures are analysed in the studio and saved.
+  (`/analysis?video=<id>&t=<seconds>`). The camera runs in real time until *■ Stop*, which
+  saves its session; pictures are analysed in the studio and saved. There is no Save
+  button: everything is saved by itself.
 - **AI coach** sends the shown frame through the full pipeline (CLIP + VLM) for a
-  teacher-style comment. **Save** (camera; automatic for videos) stores the session (counts, events, comments, angle
+  teacher-style comment. The session (saved by itself) stores (counts, events, comments, angle
   series) in the manager.
 - **Player** under the timeline: play / pause, first / last frame, one frame back or
   forward, −3/−2/−1 s and +1/+2/+3 s, replay speed ×0.25 to ×2. While the camera or a video

@@ -5,7 +5,8 @@
 // A library video is analysed by the manager when it is added (Library tab): the studio
 // only loads that analysis and plays it. Pictures are analysed here, at once, and saved;
 // the camera runs live. Keypoints adjusted afterwards are saved for the video and replace
-// the frame in its analysis and keypoint track.
+// the frame in its analysis and keypoint track. A camera session is saved when it stops:
+// there is no Save button.
 import { ReactNode, createContext, useContext, useEffect, useRef, useState } from "react";
 import { saveSession, saveTrackFrame } from "./saveSession";
 import { FrameResult, Recorded } from "./types";
@@ -99,6 +100,14 @@ function useLiveSessionState() {
     playback.replayFromStart(); // the analysed video plays back with its keypoints
     void save();
   }, [live.completedRuns]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // the camera stopped (■ Stop, or the connection ended): its session is saved by itself
+  const previousStatus = useRef(live.status);
+  useEffect(() => {
+    const wasLive = previousStatus.current === "live";
+    previousStatus.current = live.status;
+    if (wasLive && live.status !== "live" && source === "camera" && live.frames.length) void save();
+  }, [live.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** A frame changed by a keypoint adjustment. For a library video the manager already
    * replaced it in the analysis and the track; for saved pictures the track follows here. */

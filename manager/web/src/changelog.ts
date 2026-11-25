@@ -4,6 +4,12 @@ export type Release = { version: string; date: string; title: string; changes: s
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.23.1", date: "2026-11-25", title: "Live studio: no Save button",
+    changes: [
+      "The Save button is gone: library videos are saved by their analysis, pictures when their analysis ends, and a camera session when you press ■ Stop (Sessions tab).",
+    ],
+  },
+  {
     version: "0.23.0", date: "2026-11-25", title: "Videos are analysed when added to the library",
     changes: [
       "Adding a video to the library starts its analysis in the manager: every frame's keypoints, angles, movements and corrections (15 frames per second, at most 1500). A window shows the progress until it is done; each card shows its state; ↻ analyses again.",

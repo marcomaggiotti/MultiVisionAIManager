@@ -54,7 +54,7 @@ function savedPanels(): string[] {
 export default function LiveStudio() {
   // Kept by the app while other tabs are shown: the video goes on where it was.
   const {
-    live, playback, source, setSource, setFiles, overlays, setOverlays, mirror, setMirror, analyse, save, saving, updateFrame, analysisSaved,
+    live, playback, source, setSource, setFiles, overlays, setOverlays, mirror, setMirror, analyse, saving, updateFrame, analysisSaved,
     libraryVideo, openLibraryVideo, closeLibraryVideo, opening,
   } = useLiveSession();
   const navigate = useNavigate();
@@ -280,9 +280,8 @@ export default function LiveStudio() {
               <b className="small">Analysing {Math.round((live.progress ?? 0) * 100)} %</b>
             </span>
           )}
-          {(isLive || live.status === "connecting") && <button className="danger" onClick={() => live.stop()}>■ Stop</button>}
-          {source === "camera" && <button className="ghost" onClick={save} disabled={!frames.length || isLive || saving || busy !== null}>{saving ? "Saving…" : "Save"}</button>}
-          {source !== "camera" && saving && <span className="small muted">Saving…</span>}
+          {(isLive || live.status === "connecting") && <button className="danger" onClick={() => live.stop()} title="Stop the camera: the session is saved (Sessions tab)">■ Stop</button>}
+          {saving && <span className="small muted">Saving…</span>}
           <button className="success" onClick={coach} disabled={!frame || busy !== null} title="Deeper feedback on the shown frame (CLIP + VLM)">{busy === "coach" ? "Asking…" : "AI coach"}</button>
           <button className="danger" onClick={() => { live.reset(); playback.reset(); }} disabled={isLive || !frames.length}>Reset</button>
         </div>
