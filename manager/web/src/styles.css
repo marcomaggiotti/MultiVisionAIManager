@@ -391,3 +391,6 @@ pre.architecture { font-size: 11px; line-height: 1.45; overflow-x: auto; backgro
 .analysis-pill-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .analysis-pill-bar { height: 3px; border-radius: 2px; background: var(--panel-2); overflow: hidden; }
 .analysis-pill-bar > span { display: block; height: 100%; background: var(--accent); transition: width .4s; }
+
+/* ---- timeline: press and slide to move through the video ---- */
+.tracks canvas.scrub { cursor: ew-resize; touch-action: none; }

@@ -4,6 +4,12 @@ export type Release = { version: string; date: string; title: string; changes: s
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.23.3", date: "2026-11-25", title: "Timeline: slide with the mouse",
+    changes: [
+      "Live studio timeline: press on any track (poses, motion energy, leg elevation, knee angles) and slide: the playhead follows the mouse and the panels and keypoints show each frame passed (it keeps following outside the track until you release).",
+    ],
+  },
+  {
     version: "0.23.2", date: "2026-11-25", title: "Analysis progress in the top bar",
     changes: [
       "The analysis of library videos shows at the top right of every page: “⏳ Analysing name 68 %” (+N when more wait), then “✓ name analysed · open ▶” for a moment, which opens it in the live studio. The pop-up window after an upload is gone.",

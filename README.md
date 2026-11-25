@@ -54,6 +54,7 @@ persist are written to the feedback log, with the time, so you can jump back to 
 - **AI coach** sends the shown frame through the full pipeline (CLIP + VLM) for a
   teacher-style comment. Each session (counts, events, comments, angle series) is saved
   in the manager by itself.
+- **Timeline**: press on a track and slide to move through the video (the panels follow).
 - **Player** under the timeline: play / pause, first / last frame, one frame back or
   forward, −3/−2/−1 s and +1/+2/+3 s, replay speed ×0.25 to ×2. While the camera or a video
   runs, Pause freezes the capture (a video file pauses too) so the moment can be inspected.

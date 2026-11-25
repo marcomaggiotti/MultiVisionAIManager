@@ -64,12 +64,30 @@ function Track({ kind, frames, index, onSeek, vocab, version }: {
       ctx.beginPath(); ctx.moveTo(x(index), 0); ctx.lineTo(x(index), H); ctx.stroke();
     }
   }, [frames, index, kind, vocab, version]);
+  /** The frame under the mouse (the tracks span the recording, 8 px margin each side). */
+  const frameAt = (element: HTMLCanvasElement, clientX: number) => {
+    const r = element.getBoundingClientRect();
+    const n = frames.length;
+    return Math.max(0, Math.min(n - 1, Math.round(((clientX - r.left - 8) / (r.width - 16)) * (n - 1))));
+  };
+  const dragging = useRef(false);
+  // Press and slide: the playhead follows the mouse and the panels show each frame passed.
   return (
-    <canvas ref={canvas} onClick={(e) => {
-      const r = e.currentTarget.getBoundingClientRect();
-      const n = frames.length;
-      if (n) onSeek(Math.max(0, Math.min(n - 1, Math.round(((e.clientX - r.left - 8) / (r.width - 16)) * (n - 1)))));
-    }} />
+    <canvas ref={canvas} className="scrub"
+      onPointerDown={(event) => {
+        if (!frames.length || event.button !== 0) return;
+        dragging.current = true;
+        event.currentTarget.setPointerCapture(event.pointerId);
+        onSeek(frameAt(event.currentTarget, event.clientX));
+      }}
+      onPointerMove={(event) => {
+        if (dragging.current) onSeek(frameAt(event.currentTarget, event.clientX));
+      }}
+      onPointerUp={(event) => {
+        dragging.current = false;
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }}
+      onPointerCancel={() => { dragging.current = false; }} />
   );
 }
 
