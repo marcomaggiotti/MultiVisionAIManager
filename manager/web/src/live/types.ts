@@ -34,7 +34,9 @@ export type FrameResult = {
 };
 export type Recorded = {
   result: FrameResult;
-  blob: Blob;
+  /** The analysed picture: in memory (camera, pictures), or at a URL (a library video's stored analysis). */
+  blob?: Blob;
+  imageUrl?: string;
   /** The analysed video or picture (file name and size); null for the camera. */
   mediaKey: string | null;
   /** Seconds inside the video (0 for a picture); null for the camera. */

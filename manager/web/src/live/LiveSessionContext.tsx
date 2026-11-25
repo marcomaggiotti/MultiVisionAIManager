@@ -2,12 +2,15 @@
 // YOLO, CLIP or VLM tab keeps the video, its analysed frames and the player position,
 // and coming back shows exactly what was shown before.
 //
-// A video (or pictures) chosen for the studio is analysed at once, whole, and saved when
-// the analysis reaches the end: there is no Start button. Keypoints adjusted afterwards
-// replace the frame in the saved track.
+// A library video is analysed by the manager when it is added (Library tab): the studio
+// only loads that analysis and plays it. Pictures are analysed here, at once, and saved;
+// the camera runs live. Keypoints adjusted afterwards are saved for the video and replace
+// the frame in its analysis and keypoint track.
 import { ReactNode, createContext, useContext, useEffect, useRef, useState } from "react";
 import { saveSession, saveTrackFrame } from "./saveSession";
-import { FrameResult } from "./types";
+import { FrameResult, Recorded } from "./types";
+import { forgetFrameImages, preloadFrameImages } from "./frameImage";
+import { LibraryVideo, analysedFrameUrl, fetchAnalysis } from "../library/videos";
 import { Overlay } from "./drawing";
 import { Source, useLive } from "./useLive";
 import { usePlayback } from "./usePlayback";
@@ -27,6 +30,9 @@ function useLiveSessionState() {
   const [overlays, setOverlays] = useState<Set<Overlay>>(new Set<Overlay>(["skeleton", "angles"]));
   const [mirror, setMirror] = useState(false);
   const [saving, setSaving] = useState(false);
+  /** The library video shown (its stored analysis is loaded); null for the camera and pictures. */
+  const [libraryVideo, setLibraryVideo] = useState<LibraryVideo | null>(null);
+  const [opening, setOpening] = useState(false);
   const [savedRun, setSavedRun] = useState(0); // the last completed analysis that was saved
 
   /** Analyse the chosen video or pictures now (again with the current settings when called by hand). */
@@ -36,10 +42,38 @@ function useLiveSessionState() {
     void live.start(chosenSource, chosenFiles);
   };
 
-  // a new video or new pictures: analyse them whole, straight away
+  /** Show a library video: its analysis (made by the manager) is loaded and played. */
+  const openLibraryVideo = async (video: LibraryVideo) => {
+    if (video.analysis?.status !== "done") {
+      live.setError(`${video.name} is not analysed yet: wait for its analysis in the Library tab.`);
+      return;
+    }
+    setOpening(true);
+    try {
+      await live.stop();
+      const analysis = await fetchAnalysis(video.id);
+      const recorded: Recorded[] = analysis.frames.map((frame) => ({
+        result: frame, imageUrl: analysedFrameUrl(video.id, frame.index), mediaKey: video.media_key, sourceTime: frame.source_time,
+      }));
+      forgetFrameImages(recorded);
+      const adjusted = analysis.frames.filter((frame) => frame.adjusted).map((frame) => frame.source_time);
+      live.load(recorded, analysis.events, analysis.comments, `analysis-${video.id}`, adjusted);
+      setSource("video");
+      setFiles([]);
+      setLibraryVideo(video);
+      playback.replayFromStart();
+      void preloadFrameImages(recorded);
+    } catch (failure) {
+      live.setError(`Cannot open the analysis of ${video.name}: ${failure instanceof Error ? failure.message : String(failure)}`);
+    }
+    setOpening(false);
+  };
+
+  // new pictures: analyse them whole, straight away (library videos are analysed by the manager)
   const analysedFiles = useRef<File[] | null>(null);
   useEffect(() => {
-    if (source === "camera" || !files.length || analysedFiles.current === files) return;
+    if (source !== "pictures" || !files.length || analysedFiles.current === files) return;
+    setLibraryVideo(null);
     analysedFiles.current = files;
     analyse(source, files);
   }, [files, source]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -66,21 +100,25 @@ function useLiveSessionState() {
     void save();
   }, [live.completedRuns]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /** A frame changed by a keypoint adjustment: the saved track follows. */
+  /** A frame changed by a keypoint adjustment. For a library video the manager already
+   * replaced it in the analysis and the track; for saved pictures the track follows here. */
   const updateFrame = (index: number, changes: Partial<FrameResult>) => {
     live.updateFrame(index, changes);
     const frame = live.frames[index];
-    if (frame && savedRun > 0) {
+    if (frame && !libraryVideo && savedRun > 0) {
       saveTrackFrame(frame).catch((failure) => live.setError(`The adjusted frame was not saved in the video's keypoints: ${failure instanceof Error ? failure.message : String(failure)}`));
     }
   };
 
-  /** The analysis shown is the last complete one and it is saved (its frames are in the video's keypoints). */
-  const analysisSaved = live.status !== "live" && live.completedRuns > 0 && savedRun === live.completedRuns && !saving;
+  /** The frames shown are saved with their video (a library video's analysis). */
+  const analysisSaved = !!libraryVideo && source === "video";
+
+  /** Leave the library video (camera or pictures chosen). */
+  const closeLibraryVideo = () => setLibraryVideo(null);
 
   return {
     live, playback, source, setSource, files, setFiles, overlays, setOverlays, mirror, setMirror,
-    analyse, save, saving, updateFrame, analysisSaved,
+    analyse, save, saving, updateFrame, analysisSaved, libraryVideo, openLibraryVideo, closeLibraryVideo, opening,
   };
 }
 

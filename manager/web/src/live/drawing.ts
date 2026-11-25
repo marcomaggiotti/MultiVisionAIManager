@@ -1,5 +1,6 @@
 // Drawing the analysed frame: the picture plus the dancer's box, skeleton and knee angles.
 // Shared by panel A (camera) and snapshots, so both always look the same.
+import { frameImage } from "./frameImage";
 import { EDGES, FrameResult, Recorded, STATUS_COLOR, Status, VIS } from "./types";
 
 export type Overlay = "skeleton" | "box" | "angles";
@@ -76,7 +77,7 @@ export function drawPoseOverlay(context: CanvasRenderingContext2D, result: Frame
 
 /** Draw the recorded frame (and optionally its overlay) on a canvas of the picture's size. */
 export async function renderFrame(canvas: HTMLCanvasElement, frame: Recorded, overlays: Set<Overlay>, withLabels = true, highlightKeypoint: number | null = null) {
-  const bitmap = await createImageBitmap(frame.blob);
+  const bitmap = await createImageBitmap(await frameImage(frame));
   canvas.width = bitmap.width;
   canvas.height = bitmap.height;
   const context = canvas.getContext("2d")!;

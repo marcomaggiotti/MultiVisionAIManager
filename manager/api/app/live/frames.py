@@ -35,10 +35,11 @@ async def process_frame(
     jpeg_bytes: bytes,
     detection_confidence: float = 0.3,
     source_time: float | None = None,
+    video_clock: bool = False,
 ) -> dict:
     started = time.perf_counter()
     yolo_response = await detect_people(client, yolo_url, jpeg_bytes, detection_confidence)
-    result = session.process_detections(yolo_response, source_time)
+    result = session.process_detections(yolo_response, source_time, video_clock)
     result["image"] = yolo_response.get("image")
     result["latency_ms"] = {
         "yolo": yolo_response.get("inference_ms"),

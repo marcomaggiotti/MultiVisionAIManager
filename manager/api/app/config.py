@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     health_timeout: float = Field(3.0, gt=0)
     max_upload_bytes: int = Field(25 * 1024 * 1024, gt=0)
     max_frames: int = Field(16, gt=0)
+    # Analyse every library video in the background when it is added (YOLO pose on each frame).
+    analyse_videos: bool = True
     # Cloud chat models agents may use, besides the local VLM module, e.g.
     # "anthropic:<model>,openai:<model>" (needs pip install .[providers] and the API key).
     agent_models: str = ""

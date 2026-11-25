@@ -1,6 +1,7 @@
 // The manager's video library: videos uploaded (or cut) once, chosen anywhere.
 import { useEffect, useState } from "react";
 import { api, json } from "../api";
+import { Comment, FrameResult, PoseEvent } from "../live/types";
 
 export type LibraryVideo = {
   id: string;
@@ -16,11 +17,45 @@ export type LibraryVideo = {
   media_key: string;
   url: string;
   thumbnail_url: string;
-  /** Frames with saved keypoints (the video was analysed in the live studio). */
+  /** Frames with saved keypoints. */
   keypoint_frames?: number;
+  /** The manager's analysis of the video (done once, when it is added). */
+  analysis?: VideoAnalysisState | null;
+};
+
+export type VideoAnalysisState = {
+  status: "queued" | "running" | "done" | "failed";
+  progress: number; // 0 to 1
+  frames: number;
+  error: string | null;
+};
+
+/** A stored analysis: every analysed frame's result (as the live studio shows it). */
+export type StoredAnalysis = {
+  video_id: string;
+  media_key: string;
+  fps: number;
+  frames: (FrameResult & { index: number; source_time: number })[];
+  events: PoseEvent[];
+  comments: Comment[];
+  counts: Record<string, number>;
 };
 
 export const listVideos = () => api<LibraryVideo[]>("/api/videos");
+export const getVideo = (id: string) => api<LibraryVideo>(`/api/videos/${id}`);
+export const fetchAnalysis = (id: string) => api<StoredAnalysis>(`/api/videos/${id}/analysis`);
+export const analysedFrameUrl = (videoId: string, index: number) => `/api/videos/${videoId}/analysis/frames/${index}.jpg`;
+export const analyseAgain = (id: string) => api<LibraryVideo>(`/api/videos/${id}/analysis`, json("POST", {}));
+export const isAnalysing = (video: LibraryVideo) => video.analysis?.status === "queued" || video.analysis?.status === "running";
+/** "analysed", "analysing 42 %", "waiting", "analysis failed" or "not analysed". */
+export function analysisLabel(video: LibraryVideo): string {
+  const state = video.analysis;
+  if (!state) return "not analysed";
+  if (state.status === "done") return `analysed · ${state.frames} frames`;
+  if (state.status === "running") return `analysing ${Math.round(state.progress * 100)} %`;
+  if (state.status === "queued") return "waiting to be analysed";
+  return "analysis failed";
+}
 export const updateVideo = (id: string, changes: { name?: string; notes?: string }) => api<LibraryVideo>(`/api/videos/${id}`, json("PATCH", changes));
 export const deleteVideo = (id: string) => api(`/api/videos/${id}`, { method: "DELETE" });
 export const cutLibraryVideo = (id: string, start: number, end: number, mode: string, name: string) =>

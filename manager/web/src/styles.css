@@ -375,3 +375,14 @@ pre.architecture { font-size: 11px; line-height: 1.45; overflow-x: auto; backgro
 .analysis-status.running { border-left-color: var(--accent); }
 .analysis-status.done { border-left-color: var(--good); }
 .analysis-status .btn { margin-left: auto; }
+
+/* ---- library: analysis of each video ---- */
+.analysis-badge { display: flex; align-items: center; gap: 8px; margin: 4px 0; color: var(--muted); }
+.analysis-badge.done { color: var(--good); }
+.analysis-badge.failed { color: var(--bad); }
+.analysis-badge.running { flex-direction: column; align-items: stretch; gap: 2px; color: var(--fg); }
+.analysis-bar { height: 6px; border-radius: 3px; background: var(--panel-2); overflow: hidden; }
+.analysis-bar > span { display: block; height: 100%; background: var(--accent); transition: width .4s; }
+.analysis-wait { width: min(560px, 92vw); }
+.analysis-wait-row { display: grid; grid-template-columns: minmax(0, 1fr) 220px; gap: 10px; align-items: center; padding: 4px 0; }
+.analysis-wait-row > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

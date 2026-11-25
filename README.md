@@ -39,15 +39,17 @@ persist are written to the feedback log, with the time, so you can jump back to 
   counted (both adjustable), so the feedback does not flicker.
 - Frames go over a WebSocket (`/api/live/ws`); the next one leaves when the previous answer
   arrives, so the frame rate follows the GPU (15+ fps with YOLO11n-pose).
-- **A video is analysed whole, at once**: there is no Start button. Choosing a library
-  video analyses every frame (it is not played in real time: each time is sought, at the
-  *Max frames per second* setting, at most 1500 frames), with a progress bar; at the end the
-  session and the keypoints are **saved by themselves** and the video plays back with its
-  analysis, ready to inspect and to adjust (an adjusted frame replaces its saved keypoints).
-  *↻ Analyse again* re-runs it with new properties. **📷 Snapshot** (S) on a frame of the saved video keeps
-  it in the snapshot library and opens that frame in *Analysis → Video keypoints*
-  (`/analysis?video=<id>&t=<seconds>`), where it can be adjusted or opened in YOLO, CLIP or the VLM. The camera runs in real time until
-  *■ Stop*; its *Save* stays manual.
+- **Library videos are analysed by the manager, not in the studio.** When a video is added
+  to the library, the manager analyses every frame in the background (YOLO pose → main
+  dancer → smoothing → ballet rules → movements and corrections, in video time; 15 frames
+  per second, at most 1500 frames). The Library shows the progress and waits for it. The
+  studio then only **plays** the stored analysis (choose the video in the toolbar list:
+  analysed videos have a ✓), and the status line links to the same frames in *Analysis*.
+  Keypoints corrected in the studio or in Analysis are saved at once and replace the frame
+  in the stored analysis and in the keypoint track. **📷 Snapshot** (S) keeps the frame in
+  the snapshot library and opens it in *Analysis → Video keypoints*
+  (`/analysis?video=<id>&t=<seconds>`). The camera runs in real time until *■ Stop* (its
+  *Save* stays manual); pictures are analysed in the studio and saved.
 - **AI coach** sends the shown frame through the full pipeline (CLIP + VLM) for a
   teacher-style comment. **Save** (camera; automatic for videos) stores the session (counts, events, comments, angle
   series) in the manager.
@@ -155,7 +157,14 @@ The **Library** tab keeps videos in the manager (`<data>/videos/`, records in SQ
 they are uploaded once and chosen anywhere:
 
 - **Add** videos (button or drag and drop, several at once, with a progress bar); each is
-  checked with `ffprobe` (duration, size) and gets a thumbnail.
+  checked with `ffprobe` (duration, size), gets a thumbnail and is **analysed** by the
+  manager: a window shows the progress until the analysis is done (it goes on in the
+  background if closed); each card shows its state, *↻* analyses it again.
+  Code: `manager/api/app/media/video_analysis.py` (`VideoAnalyses`: queue, one video at a
+  time, resumed after a restart); stored in `<data>/analyses/<video id>/` (`analysis.json`
+  and the analysed pictures), the keypoint track and a session. API:
+  `GET/POST /api/videos/{id}/analysis`, `GET /api/videos/{id}/analysis/frames/{n}.jpg`;
+  `MANAGER_ANALYSE_VIDEOS=false` turns it off.
 - **Watch**, **rename**, add **notes** (dancer, class, what to look at), **download**,
   **delete**, **search** names and notes.
 - **✂ Cut** a part into a new library video (it remembers which video it was cut from);

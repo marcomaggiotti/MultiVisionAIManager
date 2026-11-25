@@ -4,6 +4,15 @@ export type Release = { version: string; date: string; title: string; changes: s
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.23.0", date: "2026-11-25", title: "Videos are analysed when added to the library",
+    changes: [
+      "Adding a video to the library starts its analysis in the manager: every frame's keypoints, angles, movements and corrections (15 frames per second, at most 1500). A window shows the progress until it is done; each card shows its state; ↻ analyses again.",
+      "The live studio no longer analyses videos: choosing a video (✓ = analysed) loads and plays its stored analysis at once. Correcting keypoints saves them in the analysis and the keypoint track straight away.",
+      "Cut videos and videos already in the library are analysed the same way (an interrupted analysis restarts with the manager). Renaming a video keeps its keypoints and corrections.",
+      "The camera stays live in the studio (■ Stop, Save); pictures are analysed in the studio and saved.",
+    ],
+  },
+  {
     version: "0.22.1", date: "2026-11-25", title: "Live studio: is the video analysed?",
     changes: [
       "A line under the toolbar tells whether the chosen video is analysed: progress while it runs, then “✓ analysed: keypoints saved for N frames, available frame by frame in the Analysis tab” with “Open in Analysis →” (at the frame shown).",

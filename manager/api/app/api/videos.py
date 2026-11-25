@@ -21,7 +21,8 @@ from app.media import ffmpeg
 from app.media.cutting import CutMode, cut_video, output_suffix, safe_file_name
 from app.media.keypoint_tracks import KeypointTrackStore, TrackFrame
 from app.media.library import LibraryVideo, VideoLibrary
-from app.storage import HistoryStore
+from app.media.video_analysis import AnalysisSettings, VideoAnalyses
+from app.storage import HistoryStore, RecordNotFoundError
 
 router = APIRouter(tags=["videos"])
 FRAME_MAX_SIDE = 1280
@@ -54,16 +55,32 @@ def get_tracks(request: Request) -> KeypointTrackStore:
     return request.app.state.keypoint_tracks
 
 
+def get_analyses(request: Request) -> VideoAnalyses:
+    return request.app.state.video_analyses
+
+
+def _with_analysis(video: LibraryVideo, request: Request, counts: dict[str, int] | None = None) -> dict:
+    """A video for the API: its saved keypoint frames and the state of its analysis."""
+    counts = counts if counts is not None else get_tracks(request).counts()
+    state = get_analyses(request).state(video.id)
+    return {
+        **video.to_api(),
+        "keypoint_frames": counts.get(video.media_key, 0),
+        "analysis": state.to_api() if state else None,
+    }
+
+
 @router.get("/api/videos")
 def list_videos(library: Library, request: Request) -> list[dict]:
-    """The videos, with how many analysed frames (keypoints) each has saved."""
+    """The videos, with how many analysed frames (keypoints) each has, and their analysis."""
     counts = get_tracks(request).counts()
-    return [{**video.to_api(), "keypoint_frames": counts.get(video.media_key, 0)} for video in library.list()]
+    return [_with_analysis(video, request, counts) for video in library.list()]
 
 
 @router.post("/api/videos", status_code=201)
-async def upload_videos(files: list[UploadFile], library: Library) -> dict:
-    """Add videos to the library; each is checked with ffprobe and gets a thumbnail."""
+async def upload_videos(files: list[UploadFile], library: Library, request: Request) -> dict:
+    """Add videos to the library; each is checked with ffprobe, gets a thumbnail and is
+    queued for analysis (every frame's keypoints, movements and corrections)."""
     saved, errors = [], []
     for upload in files:
         name = Path(upload.filename or "video.mp4").name
@@ -71,7 +88,9 @@ async def upload_videos(files: list[UploadFile], library: Library) -> dict:
             temporary = Path(workdir) / "upload"
             await run_in_threadpool(_save_upload, upload, temporary)
             try:
-                saved.append((await library.add(temporary, name)).to_api())
+                video = await library.add(temporary, name)
+                get_analyses(request).enqueue(video.id)
+                saved.append(_with_analysis(video, request))
             except ffmpeg.FfmpegMissingError:
                 raise
             except ffmpeg.VideoError as error:
@@ -80,8 +99,8 @@ async def upload_videos(files: list[UploadFile], library: Library) -> dict:
 
 
 @router.get("/api/videos/{video_id}")
-def get_video(video_id: str, library: Library) -> dict:
-    return library.get(video_id).to_api()
+def get_video(video_id: str, library: Library, request: Request) -> dict:
+    return _with_analysis(library.get(video_id), request)
 
 
 class VideoUpdate(BaseModel):
@@ -90,13 +109,19 @@ class VideoUpdate(BaseModel):
 
 
 @router.patch("/api/videos/{video_id}")
-def update_video(video_id: str, update: VideoUpdate, library: Library) -> dict:
-    return library.update(video_id, update.name, update.notes).to_api()
+def update_video(video_id: str, update: VideoUpdate, library: Library, store: Store, request: Request) -> dict:
+    before = library.get(video_id)
+    video = library.update(video_id, update.name, update.notes)
+    if video.media_key != before.media_key:  # renamed: its keypoints and corrections follow it
+        get_tracks(request).rename(before.media_key, video.media_key)
+        store.rename_adjustments(before.media_key, video.media_key)
+    return _with_analysis(video, request)
 
 
 @router.delete("/api/videos/{video_id}", status_code=204)
-def delete_video(video_id: str, library: Library) -> Response:
+def delete_video(video_id: str, library: Library, request: Request) -> Response:
     library.delete(video_id)
+    get_analyses(request).forget(video_id)
     shutil.rmtree(library.folder.parent / "frame-cache" / Path(video_id).name, ignore_errors=True)
     return Response(status_code=204)
 
@@ -144,7 +169,9 @@ class CutRequest(BaseModel):
 
 
 @router.post("/api/videos/{video_id}/cut", status_code=201)
-async def cut_library_video(video_id: str, cut: Annotated[CutRequest, Body()], library: Library, store: Store) -> dict:
+async def cut_library_video(
+    video_id: str, cut: Annotated[CutRequest, Body()], library: Library, store: Store, request: Request
+) -> dict:
     """Cut a part of a library video into a new library video."""
     source = library.get(video_id)
     suffix = output_suffix(cut.mode, Path(source.name).suffix)
@@ -154,10 +181,47 @@ async def cut_library_video(video_id: str, cut: Annotated[CutRequest, Body()], l
         await cut_video(library.file_path(video_id), target, cut.start, min(cut.end, source.duration), cut.mode)
         video = await library.add(target, file_name, origin="cut", parent_id=source.id)
     copied = _carry_adjustments_over(store, source.media_key, video.media_key, cut.start, cut.end)
-    return {**video.to_api(), "adjustments_copied": copied}
+    request.app.state.video_analyses.enqueue(video.id)  # after the adjustments: the analysis uses them
+    return {**_with_analysis(video, request), "adjustments_copied": copied}
 
 
-# --- keypoint tracks (saved from the live studio, read by the Analysis tab) -----------
+# --- analysis (done by the manager when a video is added; played by the live studio) ---
+@router.get("/api/videos/{video_id}/analysis")
+def video_analysis(video_id: str, library: Library, request: Request) -> FileResponse:
+    """Every analysed frame (keypoints, evaluation, movement), the movements and comments."""
+    library.get(video_id)
+    path = get_analyses(request).result_path(video_id)
+    if not path.exists():
+        raise RecordNotFoundError(f"video {video_id!r} is not analysed yet")
+    return FileResponse(path, media_type="application/json", headers={"Cache-Control": "no-store"})
+
+
+@router.get("/api/videos/{video_id}/analysis/frames/{index}.jpg")
+def analysed_frame(video_id: str, index: int, request: Request) -> FileResponse:
+    """One analysed picture (the size the keypoints are measured in)."""
+    path = get_analyses(request).frame_path(video_id, index)
+    if not path.exists():
+        raise RecordNotFoundError(f"frame {index} of video {video_id!r} not found")
+    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=3600"})
+
+
+class AnalysisRequest(BaseModel):
+    fps: float = Field(15.0, ge=1, le=30)
+    detection_confidence: float = Field(0.3, ge=0.05, le=0.95)
+    confidence: float = Field(0.35, ge=0.05, le=0.95)
+    hold: int = Field(4, ge=1, le=30)
+    smoothing: float = Field(0.5, ge=0, le=0.95)
+
+
+@router.post("/api/videos/{video_id}/analysis", status_code=202)
+def analyse_again(video_id: str, library: Library, request: Request, settings: AnalysisRequest | None = None) -> dict:
+    """Queue the video for a new analysis (e.g. with other settings)."""
+    video = library.get(video_id)
+    get_analyses(request).enqueue(video.id, AnalysisSettings(**(settings or AnalysisRequest()).model_dump()))
+    return _with_analysis(video, request)
+
+
+# --- keypoint tracks (written by the analysis, read by the Analysis tab) -----------
 class TrackFrameIn(BaseModel):
     source_time: float = Field(ge=0)
     keypoints: list[list[float]] | None = None

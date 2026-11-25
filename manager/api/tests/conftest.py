@@ -32,9 +32,10 @@ class Scripted:
 
 @pytest.fixture
 def make_client(tmp_path):
-    def make(script, handler=None, modules="yolo=http://yolo:8000"):
-        """``handler`` (a request -> response function) replaces the scripted YOLO module."""
-        settings = Settings(_env_file=None, data_dir=str(tmp_path), modules=modules)
+    def make(script, handler=None, modules="yolo=http://yolo:8000", analyse_videos=False):
+        """``handler`` (a request -> response function) replaces the scripted YOLO module.
+        Library videos are analysed in the background only with ``analyse_videos``."""
+        settings = Settings(_env_file=None, data_dir=str(tmp_path), modules=modules, analyse_videos=analyse_videos)
         return TestClient(create_app(settings, transport=httpx.MockTransport(handler or Scripted(script))))
 
     return make
