@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { api, form, post } from "../api";
 import { useLoad } from "../hooks";
 import { Slider } from "../components/ui";
@@ -81,6 +81,9 @@ export default function LiveStudio() {
   const isLive = live.status === "live";
   const analysing = isLive && source !== "camera";
   const chosenVideo = source === "video" && files[0] ? library.data?.find((video) => video.media_key === mediaKeyOf(files[0])) : undefined;
+  const savedKeypointFrames = chosenVideo?.keypoint_frames ?? 0;
+  // a finished (saved) analysis changes the library's count of frames with keypoints
+  useEffect(() => { if (analysisSaved) library.reload(); }, [analysisSaved]); // eslint-disable-line react-hooks/exhaustive-deps
   const frame = playback.shownFrame;
 
   const { holdCurrentFrame, shownIndex } = playback;
@@ -264,7 +267,7 @@ export default function LiveStudio() {
             title="Videos are added in the Library tab; choosing one analyses it whole and saves it">
             <option value="">{opening ? "Opening…" : source === "video" && files[0] && !chosenVideo ? files[0].name : "🎞 Choose a video…"}</option>
             {(library.data ?? []).map((video) => (
-              <option key={video.id} value={video.id}>{video.name} · {formatDuration(video.duration)}</option>
+              <option key={video.id} value={video.id}>{video.keypoint_frames ? "✓ " : ""}{video.name} · {formatDuration(video.duration)}</option>
             ))}
           </select>
           <div className="seg">
@@ -303,6 +306,23 @@ export default function LiveStudio() {
           <button className="success" onClick={coach} disabled={!frame || busy !== null} title="Deeper feedback on the shown frame (CLIP + VLM)">{busy === "coach" ? "Asking…" : "AI coach"}</button>
           <button className="danger" onClick={() => { live.reset(); playback.reset(); }} disabled={isLive || !frames.length}>Reset</button>
         </div>
+        {chosenVideo && (
+          <div className={`glass analysis-status ${analysing ? "running" : savedKeypointFrames ? "done" : ""}`}>
+            {analysing ? (
+              <span>⏳ Analysing <b>{chosenVideo.name}</b>: {Math.round((live.progress ?? 0) * 100)} %. The session and each frame's keypoints are saved when it reaches the end.</span>
+            ) : saving ? (
+              <span>💾 Saving the analysis of <b>{chosenVideo.name}</b>…</span>
+            ) : savedKeypointFrames ? (
+              <>
+                <span>✓ <b>{chosenVideo.name}</b> is analysed: keypoints saved for <b>{savedKeypointFrames}</b> frame{savedKeypointFrames > 1 ? "s" : ""}, available frame by frame in the Analysis tab.</span>
+                <Link className="btn small" to={`/analysis?video=${encodeURIComponent(chosenVideo.id)}&t=${(frame?.sourceTime ?? 0).toFixed(3)}`}
+                  title="Analysis → Video keypoints, at the frame shown here">Open in Analysis →</Link>
+              </>
+            ) : (
+              <span className="muted">{chosenVideo.name} has no saved keypoints yet.</span>
+            )}
+          </div>
+        )}
         {live.error && <div className="error">{live.error}</div>}
         <div className="panels">
           {panelChoices.map((choice, slot) => (

@@ -16,6 +16,8 @@ export type LibraryVideo = {
   media_key: string;
   url: string;
   thumbnail_url: string;
+  /** Frames with saved keypoints (the video was analysed in the live studio). */
+  keypoint_frames?: number;
 };
 
 export const listVideos = () => api<LibraryVideo[]>("/api/videos");

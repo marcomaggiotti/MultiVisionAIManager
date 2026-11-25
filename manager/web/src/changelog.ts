@@ -4,6 +4,13 @@ export type Release = { version: string; date: string; title: string; changes: s
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.22.1", date: "2026-11-25", title: "Live studio: is the video analysed?",
+    changes: [
+      "A line under the toolbar tells whether the chosen video is analysed: progress while it runs, then “✓ analysed: keypoints saved for N frames, available frame by frame in the Analysis tab” with “Open in Analysis →” (at the frame shown).",
+      "The video list marks analysed videos with ✓.",
+    ],
+  },
+  {
     version: "0.22.0", date: "2026-11-25", title: "The CLIP module is its own project",
     changes: [
       "The CLIP module moved, with its history, to github.com/marcomaggiotti/visual-semantic-engine: an independent web service with its own README (including how CLIP works), Docker Compose, tests and CI.",
