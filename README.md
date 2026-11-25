@@ -11,9 +11,9 @@ with **classical ballet**, on **single pictures or sequences of pictures** (no v
 
 ## Live studio: real-time ballet feedback
 
-The home page of the web interface. Start the **camera** (or a **video file**, or a
-**sequence of pictures**): every frame goes to YOLO pose through the manager, and within
-milliseconds the studio shows:
+The home page of the web interface. **Choose a video** from the library list (videos are
+added in the Library tab), click **◉ Camera**, or pick **▦ Pictures**: every frame goes to
+YOLO pose through the manager, and within milliseconds the studio shows:
 
 | Panel | What it shows |
 | --- | --- |
@@ -39,8 +39,15 @@ persist are written to the feedback log, with the time, so you can jump back to 
   counted (both adjustable), so the feedback does not flicker.
 - Frames go over a WebSocket (`/api/live/ws`); the next one leaves when the previous answer
   arrives, so the frame rate follows the GPU (15+ fps with YOLO11n-pose).
+- **A video is analysed whole, at once**: there is no Start button. Choosing a library
+  video analyses every frame (it is not played in real time: each time is sought, at the
+  *Max frames per second* setting, at most 1500 frames), with a progress bar; at the end the
+  session and the keypoints are **saved by themselves** and the video plays back with its
+  analysis, ready to inspect and to adjust (an adjusted frame replaces its saved keypoints).
+  *↻ Analyse again* re-runs it with new properties. The camera runs in real time until
+  *■ Stop*; its *Save* stays manual.
 - **AI coach** sends the shown frame through the full pipeline (CLIP + VLM) for a
-  teacher-style comment. **Save** stores the session (counts, events, comments, angle
+  teacher-style comment. **Save** (camera; automatic for videos) stores the session (counts, events, comments, angle
   series) in the manager.
 - **Player** under the timeline: play / pause, first / last frame, one frame back or
   forward, −3/−2/−1 s and +1/+2/+3 s, replay speed ×0.25 to ×2. While the camera or a video
@@ -76,7 +83,7 @@ persist are written to the feedback log, with the time, so you can jump back to 
 - **Panels A-D**: each panel's title is a chooser: camera, body-part feedback, skeletal
   tracking, pose recognition, key positions, joint angles, or a chart of the last 10 s
   (motion energy, leg elevation, knee angles, arm elevation) following the shown frame.
-- **Video keypoints** (*Save*): each analysed frame's keypoints are stored with the library
+- **Video keypoints** (saved with the session): each analysed frame's keypoints are stored with the library
   video at its time in the video (a new analysis replaces the part it covers). *Analysis →
   Video keypoints*: pick a video and a time range; every saved frame appears (thumbnail with
   skeleton, from `/api/videos/{id}/frame?t=`); click one (← / →) for the large frame and its
@@ -151,7 +158,7 @@ they are uploaded once and chosen anywhere:
   **delete**, **search** names and notes.
 - **✂ Cut** a part into a new library video (it remembers which video it was cut from);
   the cut dialog of the live studio can also keep its result in the library.
-- **Open** a video in the **Live studio** (its only video source: *📚 Library video*), as the reference of **Compare**, or in the
+- **Open** a video in the **Live studio** (its only video source: the studio's list of library videos; it is analysed and saved at once), as the reference of **Compare**, or in the
   **VLM**; the 📚 buttons of the live studio and Compare choose from the library too
   (library videos stream, with seeking, from the manager).
 - Keypoint adjustments follow a video (same name and size) and its cuts.

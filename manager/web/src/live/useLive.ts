@@ -8,6 +8,7 @@ export type Settings = {
 export const DEFAULT_SETTINGS: Settings = { fps: 15, detection_confidence: 0.3, confidence: 0.35, hold: 4, smoothing: 0.5, maxSide: 640 };
 
 const MAX_RECORDED_FRAMES = 1500;
+const SEEK_TIMEOUT_MS = 5000;
 const ANSWER_TIMEOUT_MS = 20000;
 const PAUSED_POLL_MS = 100;
 const JPEG_QUALITY = 0.8;
@@ -21,14 +22,32 @@ type CaptureSource = {
   videoFile?: File;
   pictures?: File[];
   nextPictureIndex: number;
+  /** A video file is analysed whole: the next time to seek to, and the step between frames. */
+  nextVideoTime?: number;
+  videoStep?: number;
 };
+
+/** Seconds between analysed frames of a whole video: the frame rate setting, but never
+ * more frames than the studio keeps (a long video is sampled more sparsely). */
+export const videoStep = (duration: number, fps: number) => Math.max(1 / fps, duration / MAX_RECORDED_FRAMES);
+
+/** Move a (paused) video to ``time`` and wait until that frame can be drawn. */
+const seekTo = (video: HTMLVideoElement, time: number) =>
+  new Promise<void>((resolve) => {
+    const done = () => { video.removeEventListener("seeked", done); clearTimeout(timer); resolve(); };
+    const timer = setTimeout(done, SEEK_TIMEOUT_MS);
+    video.addEventListener("seeked", done);
+    video.currentTime = time;
+  });
 
 type GrabbedFrame = { jpeg: Blob; mediaKey: string | null; sourceTime: number | null };
 
-/** Real-time session with the manager: grabs frames from the camera, a video or
- * pictures, sends each as JPEG over a WebSocket and waits for its answer before
- * sending the next one (the frame rate follows the GPU). Each frame carries its media
- * and its time inside the video, so saved keypoint adjustments can be applied. */
+/** Session with the manager: grabs frames from the camera, a video or pictures, sends
+ * each as JPEG over a WebSocket and waits for its answer before sending the next one.
+ * The camera runs in real time (the frame rate follows the GPU); a video file is
+ * analysed whole, frame after frame (it is not played: each analysed time is sought),
+ * and pictures one after the other. Each frame carries its media and its time inside
+ * the video, so saved keypoint adjustments can be applied. */
 export function useLive() {
   const [status, setStatus] = useState<"idle" | "connecting" | "live" | "ended">("idle");
   const [error, setError] = useState<string | null>(null);
@@ -37,6 +56,10 @@ export function useLive() {
   const [fps, setFps] = useState(0);
   const [capturePaused, setCapturePaused] = useState(false);
   const [adjustedTimes, setAdjustedTimes] = useState<number[]>([]);
+  /** Share of the video (or pictures) analysed, 0 to 1; null for the camera. */
+  const [progress, setProgress] = useState<number | null>(null);
+  /** Counts the analyses that went to the end of their video or pictures. */
+  const [completedRuns, setCompletedRuns] = useState(0);
   const capturePausedRef = useRef(false);
   const frames = useRef<Recorded[]>([]);
   const events = useRef<PoseEvent[]>([]);
@@ -99,6 +122,17 @@ export function useLive() {
       image = bitmap;
       [width, height] = [bitmap.width, bitmap.height];
       [mediaKey, sourceTime] = [mediaKeyOf(picture), 0];
+      setProgress(source.nextPictureIndex / source.pictures.length);
+    } else if (source.video && source.nextVideoTime !== undefined) {
+      const video = source.video;
+      if (source.nextVideoTime > video.duration) return null;
+      sourceTime = source.nextVideoTime;
+      source.nextVideoTime += source.videoStep!;
+      await seekTo(video, sourceTime);
+      image = video;
+      [width, height] = [video.videoWidth, video.videoHeight];
+      if (source.videoFile) mediaKey = mediaKeyOf(source.videoFile);
+      setProgress(Math.min(1, sourceTime / Math.max(video.duration, 1e-6)));
     } else if (source.video) {
       if (source.video.ended) return null;
       if (!source.video.videoWidth) {
@@ -141,6 +175,8 @@ export function useLive() {
   const captureLoop = async () => {
     let lastAnswerAt = performance.now();
     let consecutiveFailures = 0;
+    let reachedTheEnd = false;
+    const wholeMedia = captureSource.current.nextVideoTime !== undefined || !!captureSource.current.pictures;
     while (running.current) {
       if (capturePausedRef.current) {
         await sleep(PAUSED_POLL_MS);
@@ -150,6 +186,7 @@ export function useLive() {
       const frame = await grabFrame();
       if (!frame) {
         if (captureSource.current.video && frames.current.length === 0) setError("The video ended before any frame could be analysed.");
+        reachedTheEnd = frames.current.length > 0;
         break;
       }
       const result = await analyse(frame);
@@ -168,9 +205,15 @@ export function useLive() {
       lastAnswerAt = now;
       setFps((current) => (current ? current * 0.8 + instantFps * 0.2 : instantFps));
       refresh();
-      await sleep(Math.max(0, 1000 / settings.current.fps - (performance.now() - startedAt)));
+      // the camera is throttled to the frame rate; a whole video or pictures go as fast as the GPU answers
+      if (!wholeMedia) await sleep(Math.max(0, 1000 / settings.current.fps - (performance.now() - startedAt)));
     }
+    const completed = reachedTheEnd && running.current;
     await stop();
+    if (completed) {
+      setProgress(1);
+      setCompletedRuns((count) => count + 1);
+    }
   };
 
   const openSource = async (source: Source, files?: File[]): Promise<CaptureSource> => {
@@ -189,12 +232,13 @@ export function useLive() {
       video.src = URL.createObjectURL(files[0]);
       video.muted = true;
       video.playsInline = true;
-      try {
-        await video.play();
-      } catch {
-        throw new Error(`The browser cannot play ${files[0].name} (try an MP4 with H.264 video)`);
-      }
-      return { video, videoFile: files[0], nextPictureIndex: 0 };
+      video.preload = "auto";
+      await new Promise<void>((resolve, reject) => {
+        video.onloadeddata = () => resolve();
+        video.onerror = () => reject(new Error(`The browser cannot open ${files[0].name} (try an MP4 with H.264 video)`));
+      });
+      const duration = Number.isFinite(video.duration) ? video.duration : 0;
+      return { video, videoFile: files[0], nextPictureIndex: 0, nextVideoTime: 0, videoStep: videoStep(duration, settings.current.fps) };
     }
     if (!files?.length) throw new Error("choose pictures");
     return { pictures: files, nextPictureIndex: 0 };
@@ -207,6 +251,7 @@ export function useLive() {
     events.current = [];
     comments.current = [];
     setAdjustedTimes([]);
+    setProgress(source === "camera" ? null : 0);
     lastMediaKeySent.current = undefined;
     refresh();
     setStatus("connecting");
@@ -252,7 +297,7 @@ export function useLive() {
     capturePausedRef.current = false;
     setCapturePaused(false);
     const source = captureSource.current;
-    if (source.video && !source.stream) void source.video.play();
+    if (source.video && !source.stream && source.nextVideoTime === undefined) void source.video.play();
   };
 
   /** Change a recorded frame's result after its keypoints were adjusted (or the adjustment
@@ -290,7 +335,7 @@ export function useLive() {
     status, error, setError, session, version, fps,
     frames: frames.current, events: events.current, comments: comments.current,
     start, stop, reset, configure, addComment, settings: settings.current,
-    capturePaused, pauseCapture, resumeCapture,
+    capturePaused, pauseCapture, resumeCapture, progress, completedRuns,
     adjustedTimes, updateFrame,
   };
 }

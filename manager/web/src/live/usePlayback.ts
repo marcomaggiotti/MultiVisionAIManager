@@ -91,11 +91,17 @@ export function usePlayback(live: LiveControls) {
     setFollowing(true);
     setReplaying(false);
   };
+  /** Play the recorded frames from the first one (after a whole video was analysed). */
+  const replayFromStart = () => {
+    setSelectedIndex(0);
+    setFollowing(false);
+    setReplaying(true);
+  };
   const startFollowing = () => {
     setFollowing(true);
     setReplaying(false);
   };
-  return { shownIndex, shownFrame, player, togglePlay, seek, setSpeed, follow, holdCurrentFrame, reset, startFollowing };
+  return { shownIndex, shownFrame, player, togglePlay, seek, setSpeed, follow, holdCurrentFrame, reset, startFollowing, replayFromStart };
 }
 
 export type Playback = ReturnType<typeof usePlayback>;

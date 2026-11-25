@@ -4,6 +4,14 @@ export type Release = { version: string; date: string; title: string; changes: s
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.20.0", date: "2026-11-25", title: "Live studio: choose a video, it is analysed and saved",
+    changes: [
+      "No Start button and no “📚 Library video” button: the toolbar lists the library's videos (added in the Library tab); choosing one analyses it whole, frame by frame, with a progress bar.",
+      "At the end the session and every frame's keypoints are saved by themselves, and the video plays back with its analysis, ready to inspect and adjust; an adjusted frame replaces its saved keypoints.",
+      "“↻ Analyse again” re-runs the analysis with new properties. ◉ Camera starts the camera at once (■ Stop, then Save); ▦ Pictures are analysed and saved the same way as a video.",
+    ],
+  },
+  {
     version: "0.19.0", date: "2026-11-25", title: "Analysis: keypoints table view",
     changes: [
       "Analysis → Video keypoints: “☰ Table” shows one line per frame (small picture with its skeleton, time, movement) and the 17 keypoints (0 nose … 16 right ankle) as columns, with x and y in pixels; points not visible are faded.",
