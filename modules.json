@@ -24,7 +24,7 @@
       "name": "vlm",
       "title": "Vision-language models",
       "url": "http://vlm:8000",
-      "repository": "modules/vlm",
+      "repository": "https://github.com/marcomaggiotti/vlm_hub_engine",
       "launcher": { "type": "docker", "service": "vlm" },
       "autostart": true,
       "idle_stop_minutes": 30,

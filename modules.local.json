@@ -30,7 +30,7 @@
       "name": "vlm",
       "title": "Vision-language models",
       "url": "http://127.0.0.1:8003",
-      "repository": "modules/vlm",
+      "repository": "https://github.com/marcomaggiotti/vlm_hub_engine",
       "launcher": {
         "type": "process",
         "cwd": "modules/vlm",

@@ -2,3 +2,7 @@
 	path = modules/yolo
 	url = https://github.com/marcomaggiotti/detect_image_engine
 	branch = claude/serene-dirac-srols1
+[submodule "modules/vlm"]
+	path = modules/vlm
+	url = https://github.com/marcomaggiotti/vlm_hub_engine
+	branch = claude/serene-dirac-srols1

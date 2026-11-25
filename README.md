@@ -258,7 +258,7 @@ name (`http://yolo:8000`, ...).
 | `manager-api` | `manager/api` (FastAPI) | The hub: module registry, launching, reverse proxy, live sessions, analysis pipeline, history | `127.0.0.1:8080` | `manager-data` (SQLite, pictures), `modules.json` (read-only), Docker socket |
 | `yolo` | `modules/yolo` = [detect_image_engine](https://github.com/marcomaggiotti/detect_image_engine) (git submodule) | Detection and 17-keypoint pose; datasets, training, robustness, latency | `127.0.0.1:8001` | `yolo-data` |
 | `clip` | `modules/clip` | CLIP / SigLIP embeddings, zero-shot, retrieval, fine-tuning | `127.0.0.1:8002` | `clip-data`, `hf-cache` |
-| `vlm` | `modules/vlm` | Small vision-language models, decoding, attention, LoRA, evaluation | `127.0.0.1:8003` | `vlm-data`, `hf-cache` |
+| `vlm` | `modules/vlm` = [vlm_hub_engine](https://github.com/marcomaggiotti/vlm_hub_engine) (git submodule) | Small vision-language models, decoding, attention, LoRA, evaluation | `127.0.0.1:8003` | `vlm-data`, `hf-cache` |
 
 - **Master / slave.** Only the manager talks to the modules. The browser talks to the
   manager (`/api/modules/<name>/...` is forwarded to the module), so the modules' ports
@@ -426,6 +426,13 @@ Where each concept appears in this project:
 
 ### VLM (`modules/vlm`)
 
+Lives in its own repository, [vlm_hub_engine](https://github.com/marcomaggiotti/vlm_hub_engine):
+an independent web service (own README, Docker Compose, tests and CI) that runs without the
+manager. It is cloned automatically into `modules/vlm` (git submodule, branch
+`claude/serene-dirac-srols1` until it is merged). The manager only talks to it over HTTP
+(`/v1/models`, `/v1/model`, `/v1/generate`…); prompts, video description and workflows
+(below) stay in the manager because they combine the VLM with the video library, YOLO and CLIP.
+
 | Topic | Where |
 | --- | --- |
 | Different VLMs, smaller first | *Models*: SmolVLM-256M (~1 GB) → SmolVLM-500M → LLaVA-OneVision-0.5B → InternVL3-1B → Qwen2-VL-2B → SmolVLM2-2.2B → Qwen2.5-VL-3B, any other Hugging Face id; 8/4-bit loading |
@@ -507,14 +514,15 @@ Requirements: Docker with Compose v2.24+. For the GPU: an NVIDIA driver and the
 ```bash
 git clone --recursive https://github.com/marcomaggiotti/MultiVisionAIManager
 cd MultiVisionAIManager
-docker compose up -d --build        # or ./start.sh (also clones modules/yolo) · ./start.sh --cpu
+docker compose up -d --build        # or ./start.sh (also clones modules/yolo and modules/vlm) · ./start.sh --cpu
 ```
 
 `docker compose up` builds and starts the manager and the three modules. From then on the
 manager stops and relaunches each module (dashboard buttons, automatically when it is
-needed, idle stop for the VLM). The YOLO module is the
-[detect_image_engine](https://github.com/marcomaggiotti/detect_image_engine) repository,
-included as a git submodule in `modules/yolo` (`--recursive` clones it; otherwise run
+needed, idle stop for the VLM). The YOLO and VLM modules are the
+[detect_image_engine](https://github.com/marcomaggiotti/detect_image_engine) and
+[vlm_hub_engine](https://github.com/marcomaggiotti/vlm_hub_engine) repositories,
+included as git submodules in `modules/yolo` and `modules/vlm` (`--recursive` clones them; otherwise run
 `git submodule update --init` once, or use `./start.sh`, which does it).
 
 ### GPU, PyTorch and CUDA versions
@@ -557,7 +565,7 @@ the VLM (*VLM → Models → Unload*) before long YOLO or CLIP training on small
 The manager launches the modules as local processes with `modules.local.json`:
 
 ```bash
-git submodule update --init modules/yolo
+git submodule update --init modules/yolo modules/vlm
 pip install -e "modules/yolo[ultralytics]" -e modules/clip -e modules/vlm
 cd manager/api && pip install -e ".[dev]" && MANAGER_REGISTRY=../../modules.local.json uvicorn app.main:app --port 8080
 cd manager/web && npm install && npm run dev      # http://localhost:5173
@@ -592,7 +600,7 @@ manager/web/                React app: pages/LiveStudio + live/, Compare + compa
                             VlmStudio + vlm/ (workflow editor), Admin + admin/ (AI workflow builder,
                             agents), Analyze, Dashboard (modules), studios
 modules/clip/               CLIP module: engine.py, analysis.py, gallery.py, training.py, static/ (own page)
-modules/vlm/                VLM module: engine.py, training.py (LoRA, evaluation), metrics.py, static/
+modules/vlm/                VLM module = vlm_hub_engine (git submodule)
 modules/yolo/               YOLO module = detect_image_engine (git submodule)
 ```
 
