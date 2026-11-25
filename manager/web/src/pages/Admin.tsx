@@ -19,7 +19,7 @@ export default function Admin() {
     <Page title="Admin · AI workflows" subtitle="Build AI workflows across the modules (YOLO, ballet rules, CLIP, VLM) and LangChain agents; runs are executed by LangGraph on the manager.">
       <Tabs value={tab} onChange={setTab} tabs={[["builder", "AI workflow builder"], ["agents", "Agents"], ["catalog", "Catalog & architecture"]]} />
       <ErrorBox error={catalog.error} />
-      {catalog.data && tab === "builder" && <FlowBuilder catalog={catalog.data} prompts={prompts.data ?? []} input={input} onInput={setInput} />}
+      {catalog.data && tab === "builder" && <FlowBuilder catalog={catalog.data} prompts={prompts.data ?? []} onPromptsChanged={prompts.reload} input={input} onInput={setInput} />}
       {catalog.data && tab === "agents" && <AgentPlayground catalog={catalog.data} input={input} onInput={setInput} />}
       {catalog.data && tab === "catalog" && <CatalogView catalog={catalog.data} />}
     </Page>

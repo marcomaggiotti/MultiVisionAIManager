@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from dataclasses import dataclass
 
@@ -29,6 +30,7 @@ class AskOptions:
     system: str | None = None
     max_new_tokens: int = 256
     temperature: float = 0.0  # 0 = greedy (the same answer every time)
+    model: str | None = None  # a VLM model id to load first; None = the loaded model
 
     def decoding_params(self) -> dict:
         params: dict = {"max_new_tokens": self.max_new_tokens}
@@ -38,15 +40,61 @@ class AskOptions:
 
 
 class VlmClient:
-    def __init__(self, registry: ModuleRegistry, http_client: httpx.AsyncClient, timeout: float) -> None:
+    def __init__(self, registry: ModuleRegistry, http_client: httpx.AsyncClient, timeout: float, recorder=None) -> None:
         self.registry = registry
         self.http_client = http_client
         self.timeout = timeout
+        self.recorder = recorder  # UsageRecorder: every question goes to the history
+        self._model_lock = asyncio.Lock()  # one model switch at a time
 
-    async def ask(self, prompt: str, pictures: list[bytes], options: AskOptions | None = None) -> VlmAnswer:
+    async def models(self) -> dict:
+        """The VLM module's catalogue and loaded model, without starting the module."""
+        module = self.registry.modules.get(MODULE_NAME)
+        if module is None or not await self.registry.is_healthy(module, max_age=5.0):
+            return {"running": False, "active": None, "catalog": [], "adapters": []}
+        try:
+            response = await self.http_client.get(f"{module.url}/v1/models", timeout=5.0)
+            response.raise_for_status()
+        except httpx.HTTPError as error:
+            raise VlmError(f"VLM module: {describe_http_error(error)}") from error
+        return {"running": True, **response.json()}
+
+    async def ensure_model(self, model_id: str, source: str = "VLM tools") -> None:
+        """Load ``model_id`` in the VLM module unless it is already the loaded one."""
+        url = self.registry.get(MODULE_NAME).url
+        async with self._model_lock:
+            try:
+                response = await self.http_client.get(f"{url}/v1/models", timeout=10.0)
+                response.raise_for_status()
+                if response.json().get("active") == model_id:
+                    return
+                request = {"model_id": model_id}
+                if self.recorder:
+                    response = await self.recorder.post(
+                        self.http_client,
+                        MODULE_NAME,
+                        f"{url}/v1/model",
+                        source=source,
+                        request=request,
+                        picture=None,
+                        method="PUT",
+                        json=request,
+                        timeout=self.timeout,
+                    )
+                else:
+                    response = await self.http_client.put(f"{url}/v1/model", json=request, timeout=self.timeout)
+                response.raise_for_status()
+            except httpx.HTTPError as error:
+                raise VlmError(f"VLM module: could not load {model_id}: {describe_http_error(error)}") from error
+
+    async def ask(
+        self, prompt: str, pictures: list[bytes], options: AskOptions | None = None, source: str = "VLM tools"
+    ) -> VlmAnswer:
         options = options or AskOptions()
         if problem := await self.registry.ensure_running(MODULE_NAME):
             raise VlmError(f"VLM module: {problem}")
+        if options.model:
+            await self.ensure_model(options.model, source)
         url = self.registry.get(MODULE_NAME).url
         data = {
             "prompt": prompt,
@@ -57,9 +105,21 @@ class VlmClient:
             data["system"] = options.system
         files = [("images", (f"picture-{index + 1}.jpg", jpeg, "image/jpeg")) for index, jpeg in enumerate(pictures)]
         try:
-            response = await self.http_client.post(
-                f"{url}/v1/generate", data=data, files=files or None, timeout=self.timeout
-            )
+            arguments = {"data": data, "files": files or None, "timeout": self.timeout}
+            if self.recorder:
+                details = {**data, "pictures": len(pictures)}
+                first = pictures[0] if pictures else None
+                response = await self.recorder.post(
+                    self.http_client,
+                    MODULE_NAME,
+                    f"{url}/v1/generate",
+                    source=source,
+                    request=details,
+                    picture=first,
+                    **arguments,
+                )
+            else:
+                response = await self.http_client.post(f"{url}/v1/generate", **arguments)
             response.raise_for_status()
         except httpx.HTTPError as error:
             raise VlmError(f"VLM module: {describe_http_error(error)}") from error

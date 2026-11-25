@@ -2,16 +2,17 @@ import { Check, Field, Slider } from "../components/ui";
 import { ConditionEditor, OutgoingEdges, VariableChips } from "../vlm/WorkflowInspector";
 import { Selection, removeSelection } from "../vlm/WorkflowCanvas";
 import { Graph, GraphNode, Prompt, describeCondition } from "../vlm/types";
-import { Catalog, FieldSpec, flowVariables } from "./catalog";
+import { Catalog, FieldSpec, VlmModels, flowVariables, shortModel } from "./catalog";
 
 /** One field of a node, drawn from its catalog description. */
-function FieldInput({ field, value, onChange, catalog, prompts, variables }: {
+function FieldInput({ field, value, onChange, catalog, prompts, variables, vlmModels }: {
   field: FieldSpec;
   value: any;
   onChange: (value: any) => void;
   catalog: Catalog;
   prompts: Prompt[];
   variables: string[];
+  vlmModels: VlmModels | null;
 }) {
   switch (field.kind) {
     case "textarea":
@@ -83,6 +84,32 @@ function FieldInput({ field, value, onChange, catalog, prompts, variables }: {
           </select>
         </Field>
       );
+    case "vlm_model": {
+      const known = vlmModels?.catalog ?? [];
+      const chosen = String(value ?? "");
+      const other = chosen && !known.some((model) => model.id === chosen);
+      const loaded = vlmModels?.active ? shortModel(vlmModels.active) : null;
+      return (
+        <Field label={field.label} help={vlmModels?.running ? field.help : "The VLM module is stopped: its models are listed once it runs. You can still type a model id."}>
+          <select value={other ? "__other" : chosen} onChange={(event) => {
+            if (event.target.value === "__other") return;
+            if (event.target.value !== "__type") return onChange(event.target.value);
+            const typed = window.prompt("Hugging Face model id of the VLM", chosen || "HuggingFaceTB/SmolVLM-500M-Instruct");
+            if (typed?.trim()) onChange(typed.trim());
+          }}>
+            <option value="">Loaded model{loaded ? ` (${loaded})` : ""}</option>
+            {known.map((model) => (
+              <option key={model.id} value={model.id}>
+                {shortModel(model.id)}{model.params_b ? ` · ${model.params_b} B` : ""}{model.id === vlmModels?.active ? " · loaded" : ""}
+              </option>
+            ))}
+            {other && <option value="__other">{shortModel(chosen)}</option>}
+            <option value="__type">Other model id…</option>
+          </select>
+          {chosen && chosen !== vlmModels?.active && <span className="small muted">Loaded before this node asks (switching takes a moment).</span>}
+        </Field>
+      );
+    }
     case "choices":
       return (
         <Field label={field.label} help={field.help}>
@@ -101,13 +128,14 @@ function FieldInput({ field, value, onChange, catalog, prompts, variables }: {
 }
 
 /** Edit the selected node (its catalog fields) or arrow (its condition). */
-export function FlowInspector({ graph, selection, onChange, onSelect, catalog, prompts }: {
+export function FlowInspector({ graph, selection, onChange, onSelect, catalog, prompts, vlmModels }: {
   graph: Graph;
   selection: Selection;
   onChange: (graph: Graph) => void;
   onSelect: (selection: Selection) => void;
   catalog: Catalog;
   prompts: Prompt[];
+  vlmModels: VlmModels | null;
 }) {
   const variables = flowVariables(graph, catalog);
   if (!selection) {
@@ -119,6 +147,7 @@ export function FlowInspector({ graph, selection, onChange, onSelect, catalog, p
           <li>Drag from a node's <b>●</b> to another node to connect them; click a node or an arrow to edit it here.</li>
           <li>After a node, its arrows are tried in order (“otherwise” last): conditions test the node's answer.</li>
           <li>Each node keeps its answer in a variable; prompts, goals and templates use them: {variables.map((name) => `{{${name}}}`).join(" ")}</li>
+          <li>Each “Ask the VLM” node can use its own VLM model and prompt: pick a saved prompt in the palette's Language group, or “＋ New prompt”.</li>
           <li>Runs are executed by LangGraph on the manager: “Ask the user” pauses the run until you answer.</li>
         </ul>
       </div>
@@ -158,7 +187,7 @@ export function FlowInspector({ graph, selection, onChange, onSelect, catalog, p
         .filter((field) => !(usesSavedPrompt && ["text", "system", "max_new_tokens", "temperature"].includes(field.name)))
         .map((field) => (
           <FieldInput key={field.name} field={field} value={node.data[field.name]} onChange={(value) => update(field.name, value)}
-            catalog={catalog} prompts={prompts} variables={variables} />
+            catalog={catalog} prompts={prompts} variables={variables} vlmModels={vlmModels} />
         ))}
       {usesSavedPrompt && savedPrompt && <p className="small wf-saved-prompt">{savedPrompt.text}<br /><span className="muted">Edit it in VLM → Prompts.</span></p>}
       {spec.has_output && <OutgoingEdges graph={graph} node={node} onChange={onChange} branching={!!spec.branching} />}

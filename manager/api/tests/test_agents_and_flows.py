@@ -38,21 +38,35 @@ class Modules:
 
     def __init__(self):
         self.vlm_prompts: list[str] = []
+        self.vlm_model = "small-vlm"  # the loaded VLM model
+        self.vlm_loads: list[str] = []  # every model switch
+        self.vlm_answered_with: list[str] = []  # the model loaded at each question
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
         if path in ("/health", "/v1/info"):
             return httpx.Response(200, json={"status": "ok"})
+        if path == "/v1/models":
+            catalog = [{"id": "small-vlm", "params_b": 0.3}, {"id": "large-vlm", "params_b": 2.2}]
+            return httpx.Response(200, json={"active": self.vlm_model, "adapter": None, "catalog": catalog})
+        if path == "/v1/model" and request.method == "PUT":
+            self.vlm_model = json.loads(request.content)["model_id"]
+            self.vlm_loads.append(self.vlm_model)
+            return httpx.Response(200, json={"model_id": self.vlm_model})
         if path == "/v1/detect":
             box = {"x1": 20, "y1": 30, "x2": 150, "y2": 205}
             people = [{"label": "person", "confidence": 0.9, "box": box, "keypoints": ARABESQUE}]
-            return httpx.Response(200, json={"detections": people, "image": {"width": 200, "height": 220}})
+            return httpx.Response(200, json={
+                "detections": people, "image": {"width": 200, "height": 220},
+                "counts": {"person": 1}, "model": {"weights": "fake-pose.pt"},
+            })  # fmt: skip
         if path == "/v1/zero-shot":
             count = request.content.count(b'name="images"')
             ranking = [{"label": "arabesque", "probability": 0.71}, {"label": "attitude", "probability": 0.2}]
             return httpx.Response(200, json={"results": [{"ranking": ranking}] * count})
         prompt, system = form_field(request, "prompt"), form_field(request, "system")
         self.vlm_prompts.append(prompt)
+        self.vlm_answered_with.append(self.vlm_model)
         if "Tools:" in system:  # the agent's ReAct protocol
             if "Observation:" not in prompt:
                 text = 'Thought: I check the pose.\nAction: evaluate_ballet_pose\nAction Input: {"frame": 1}'
@@ -221,3 +235,33 @@ def test_unknown_node_types_are_reported(make_client):
         assert "unknown node type 'teleport'" in " ".join(
             client.post("/api/flows/check", json=graph).json()["problems"]
         )
+
+
+def test_each_vlm_node_can_use_its_own_model_and_prompt(make_client):
+    modules = Modules()
+    with make_client([], handler=modules, modules=MODULES) as client:
+        models = client.get("/api/flows/vlm-models").json()
+        assert models["running"] and models["active"] == "small-vlm"
+        assert [model["id"] for model in models["catalog"]] == ["small-vlm", "large-vlm"]
+        assert any(field["kind"] == "vlm_model" for spec in client.get("/api/flows/catalog").json()["nodes"]
+                   for field in spec["fields"])  # fmt: skip
+
+        saved = client.post("/api/prompts", json={"name": "Lines", "text": "Judge the lines."}).json()
+        graph = {
+            "nodes": [
+                node("start", "start"),
+                node("quick", "vlm_ask", text="Name the step.", model="", use_pictures=False, output="quick"),
+                node("deep", "vlm_ask", prompt_id=saved["id"], model="large-vlm", use_pictures=False, output="deep"),
+                node("again", "vlm_ask", text="And now?", model="large-vlm", use_pictures=False, output="again"),
+                node("end", "end", template="{{quick}} / {{deep}}"),
+            ],
+            "edges": [edge("start", "quick"), edge("quick", "deep"), edge("deep", "again"), edge("again", "end")],
+        }
+        started = client.post("/api/flow-runs", data={"request": json.dumps({"graph": graph})})
+        run = wait_for(client, started.json()["id"], "finished", "failed")
+        assert run["status"] == "finished", run["error"]
+        assert run["result"] == "VLM: Name the step. / VLM: Judge the lines."
+        assert modules.vlm_answered_with == ["small-vlm", "large-vlm", "large-vlm"]
+        assert modules.vlm_loads == ["large-vlm"]  # loaded once, kept for the next node
+        loads = client.get("/api/history", params={"q": "/v1/model"}).json()["items"]
+        assert [(entry["method"], entry["source"]) for entry in loads] == [("PUT", "Workflow")]

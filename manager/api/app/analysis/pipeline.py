@@ -48,8 +48,16 @@ def crop_around(image: Image.Image, box: dict | None, padding: float = CROP_PADD
 class AnalysisRun:
     """One analysis: the frames being filled in, timings and module errors."""
 
-    def __init__(self, client: httpx.AsyncClient, module_urls: dict[str, str], pictures: list[Picture], options: dict):
+    def __init__(
+        self,
+        client: httpx.AsyncClient,
+        module_urls: dict[str, str],
+        pictures: list[Picture],
+        options: dict,
+        recorder=None,
+    ):
         self.client = client
+        self.recorder = recorder  # UsageRecorder: each module call goes to the history
         self.module_urls = module_urls
         self.pictures = pictures
         self.options = options
@@ -59,6 +67,13 @@ class AnalysisRun:
         ]
         self.errors: list[dict] = []
         self.timings: dict[str, float] = {}
+
+    async def post(self, module: str, url: str, request: dict, picture: bytes | None, **arguments) -> httpx.Response:
+        if self.recorder is None:
+            return await self.client.post(url, **arguments)
+        return await self.recorder.post(
+            self.client, module, url, source="Analysis", request=request, picture=picture, **arguments
+        )
 
     def wants(self, module: str) -> bool:
         return self.options[module]["enabled"] and module in self.module_urls
@@ -73,10 +88,18 @@ class AnalysisRun:
     async def detect_poses(self) -> None:
         for frame, picture in zip(self.frames, self.pictures, strict=True):
             try:
-                response = await self.client.post(
+                jpeg = to_jpeg(picture.image)
+                response = await self.post(
+                    "yolo",
                     f"{self.module_urls['yolo']}/v1/detect",
+                    {
+                        "picture": picture.filename,
+                        "classes": "person",
+                        "confidence": self.options["yolo"]["confidence"],
+                    },
+                    jpeg,
                     params={"classes": "person", "confidence": self.options["yolo"]["confidence"]},
-                    files={"image": (picture.filename, to_jpeg(picture.image), "image/jpeg")},
+                    files={"image": (picture.filename, jpeg, "image/jpeg")},
                 )
                 response.raise_for_status()
                 detection = response.json()
@@ -120,12 +143,14 @@ class AnalysisRun:
         if clip_options.get("templates"):
             form["templates"] = json.dumps(clip_options["templates"])
         try:
-            response = await self.client.post(
+            jpegs = [to_jpeg(crop) for crop in crops]
+            response = await self.post(
+                "clip",
                 f"{self.module_urls['clip']}/v1/zero-shot",
+                {**form, "pictures": len(jpegs)},
+                jpegs[0] if jpegs else None,
                 data=form,
-                files=[
-                    ("images", (f"crop{index}.jpg", to_jpeg(crop), "image/jpeg")) for index, crop in enumerate(crops)
-                ],
+                files=[("images", (f"crop{index}.jpg", jpeg, "image/jpeg")) for index, jpeg in enumerate(jpegs)],
             )
             response.raise_for_status()
             for frame, result in zip(self.frames, response.json()["results"], strict=True):
@@ -150,13 +175,14 @@ class AnalysisRun:
             "params": json.dumps({"max_new_tokens": int(vlm_options["max_new_tokens"])}),
         }
         try:
-            response = await self.client.post(
+            jpegs = [to_jpeg(picture.image) for picture in self.pictures]
+            response = await self.post(
+                "vlm",
                 f"{self.module_urls['vlm']}/v1/generate",
+                {**form, "pictures": len(jpegs)},
+                jpegs[0] if jpegs else None,
                 data=form,
-                files=[
-                    ("images", (f"picture{index}.jpg", to_jpeg(picture.image), "image/jpeg"))
-                    for index, picture in enumerate(self.pictures)
-                ],
+                files=[("images", (f"picture{index}.jpg", jpeg, "image/jpeg")) for index, jpeg in enumerate(jpegs)],
             )
             response.raise_for_status()
             answer = response.json()
@@ -184,11 +210,12 @@ async def run_analysis(
     pictures: list[Picture],
     requested_options: dict | None = None,
     earlier_errors: list[dict] | None = None,
+    recorder=None,
 ) -> dict:
     """``module_urls`` lists the modules that are up; ``earlier_errors`` the problems so far
     (e.g. a module that could not be launched)."""
     started = time.perf_counter()
-    run = AnalysisRun(client, module_urls, pictures, merge_options(requested_options))
+    run = AnalysisRun(client, module_urls, pictures, merge_options(requested_options), recorder)
     run.errors.extend(earlier_errors or [])
     if run.wants("yolo"):
         await run.timed("yolo", run.detect_poses())

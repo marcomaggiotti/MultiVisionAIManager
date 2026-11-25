@@ -104,6 +104,7 @@ def _prompt_of(settings: dict, prompts: DocumentStore) -> tuple[str, AskOptions]
         system=source.get("system") or None,
         max_new_tokens=int(source.get("max_new_tokens") or 256),
         temperature=float(source.get("temperature") or 0),
+        model=str(settings.get("model") or "").strip() or None,  # the node's choice, not the prompt's
     )
     return source.get("text", ""), options
 
@@ -113,7 +114,7 @@ async def run_vlm_ask(call: NodeCall) -> NodeOutcome:
     text, options = _prompt_of(call.settings, call.environment.prompts)
     call.step.prompt = render(text, call.variables)
     pictures = capabilities.pictures.jpegs if call.settings["use_pictures"] else []
-    answer = await capabilities.services.vlm.ask(call.step.prompt, pictures, options)
+    answer = await capabilities.services.vlm.ask(call.step.prompt, pictures, options, source=capabilities.source)
     call.step.latency_ms = answer.latency_ms
     return _answer(call, answer.text)
 

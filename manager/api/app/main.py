@@ -25,10 +25,25 @@ import httpx
 from fastapi import FastAPI
 
 from app.agents.capabilities import Services
-from app.api import adjustments, agents, analysis, compare, flows, knowledge, live, modules, snapshots, videos, vlm
+from app.api import (
+    adjustments,
+    agents,
+    analysis,
+    compare,
+    flows,
+    history,
+    knowledge,
+    live,
+    modules,
+    snapshots,
+    videos,
+    vlm,
+)
 from app.api.errors import register_error_handlers
 from app.config import Settings, get_settings
 from app.flows.engine import FlowRunner
+from app.history.recorder import UsageRecorder
+from app.history.store import UsageHistory
 from app.media.keypoint_tracks import KeypointTrackStore
 from app.media.library import VideoLibrary
 from app.media.snapshots import SnapshotLibrary
@@ -73,11 +88,15 @@ def create_app(
         app.state.library = VideoLibrary(data_dir, app.state.store.database_path)
         app.state.snapshots = SnapshotLibrary(data_dir, app.state.store.database_path)
         app.state.keypoint_tracks = KeypointTrackStore(app.state.store.database_path)
+        app.state.history = UsageHistory(data_dir, app.state.store.database_path)
+        app.state.recorder = UsageRecorder(app.state.history)
         app.state.prompts = DocumentStore(app.state.store.database_path, "prompt")
         app.state.workflows = DocumentStore(app.state.store.database_path, "workflow")
-        app.state.vlm = VlmClient(app.state.registry, http_client, settings.proxy_timeout)
+        app.state.vlm = VlmClient(app.state.registry, http_client, settings.proxy_timeout, app.state.recorder)
         app.state.flows = DocumentStore(app.state.store.database_path, "flow")
-        app.state.services = Services(app.state.registry, http_client, app.state.vlm, app.state.library)
+        app.state.services = Services(
+            app.state.registry, http_client, app.state.vlm, app.state.library, app.state.recorder
+        )
         app.state.flow_runner = FlowRunner(app.state.services, app.state.prompts)
         app.state.live_sessions = {}
         idle_watcher = asyncio.create_task(app.state.registry.stop_idle_modules_forever())
@@ -102,6 +121,7 @@ def create_app(
         vlm,
         flows,
         agents,
+        history,
     ):
         app.include_router(router_module.router)
     register_error_handlers(app)

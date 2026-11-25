@@ -158,6 +158,25 @@ they are uploaded once and chosen anywhere:
 API: `GET/POST /api/videos`, `GET/PATCH/DELETE /api/videos/{id}`, `/file` (byte ranges),
 `/thumbnail`, `/frames?start&end&count` (evenly spread pictures), `POST /api/videos/{id}/cut`.
 
+## History of module use
+
+The **History** tab lists every call made through the manager to YOLO, CLIP and the VLM:
+from their tabs, Analysis, the VLM tools, AI workflows and agents (the live studio's
+per-frame calls are not listed: they are kept in its sessions).
+
+- Each call keeps its time, module, action, **source** (YOLO tab, Analysis, Workflow,
+  Agent…), status, latency, a short **summary** (e.g. *1 detection(s): person ×1*, the top
+  CLIP label, the start of the VLM answer), the settings sent, the answer (shortened) and
+  a thumbnail of the picture.
+- Statistics per module (calls, errors, average time) and per source; filter by module,
+  source, period and text.
+- Open a call to see the picture with its detections, the prompt and the answer, and
+  **use the picture again** in YOLO, CLIP or the VLM.
+- The newest 5000 calls are kept (`<data>/history/`, records in SQLite).
+
+API: `GET /api/history?module&source&q&hours&limit&offset`, `GET /api/history/stats`,
+`GET/DELETE /api/history/{id}`, `/picture`, `DELETE /api/history?module=`.
+
 ## Admin: AI workflow builder and LangChain agents
 
 The **Admin** tab builds AI workflows across all the modules, graphically, and runs them
@@ -191,7 +210,12 @@ Admin builder (React)          manager (FastAPI)
   number > … / otherwise) tried in order; any node can branch, loops are allowed. Check,
   save, save as, export / import JSON; template *Ballet coach*: YOLO checks a dancer is
   there → ballet rules and CLIP name the movement → you choose the depth → an agent
-  writes the coaching. *Run* shows the run live (current node, path taken, each node's
+  writes the coaching. **Different VLMs and prompts**: each *Ask the VLM* node has its own
+  *VLM model* (the loaded one, one of the VLM module's catalogue, or any model id; the
+  manager loads it with `PUT /v1/model` just before the node asks and keeps it for the
+  next node) and its own prompt; the *Language* group of the palette lists the saved
+  prompts (one click adds a node using it) and *＋ New prompt* writes and saves one
+  without leaving the builder. *Run* shows the run live (current node, path taken, each node's
   readings, the agent's thoughts and tool calls) and waits for your answers.
 - **How LangGraph runs it** (`app/flows/engine.py`): each flow is compiled to a
   `StateGraph` (state: the variables, the text the arrows test); a node calls its catalog
@@ -562,7 +586,8 @@ manager/api/app/            hub (FastAPI)
   ballet/                   keypoints, measurements, movements, recognition, feedback, motion
   live/                     real-time sessions: smoothing, movement tracking, correction log
   analysis/                 multi-module pipeline, VLM context, evidence fusion
-  storage.py                history (SQLite)
+  history/                  record and search every module call (History tab)
+  storage.py                analysis history (SQLite)
 manager/web/                React app: pages/LiveStudio + live/, Compare + compare/, Library + library/,
                             VlmStudio + vlm/ (workflow editor), Admin + admin/ (AI workflow builder,
                             agents), Analyze, Dashboard (modules), studios
