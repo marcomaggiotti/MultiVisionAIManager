@@ -27,7 +27,9 @@ type VideoWithTrack = LibraryVideo & { keypoint_frames: number };
 
 const frameUrl = (videoId: string, time: number, side: number) => `/api/videos/${videoId}/frame?t=${time.toFixed(3)}&max_side=${side}`;
 
-/** The saved keypoints drawn over a picture of the same frame (an SVG in the analysed picture's pixels). */
+/** The saved keypoints drawn over a picture of the same frame (an SVG in the analysed picture's pixels).
+ * "meet" scales and centres it like the picture's `object-fit: contain`, so it stays on the
+ * dancer when the large view adds black bars. */
 function SkeletonOverlay({ frame, highlight = null, thin = false }: { frame: TrackFrame; highlight?: number | null; thin?: boolean }) {
   if (!frame.keypoints || !frame.image) return null;
   const points = frame.keypoints;
@@ -35,7 +37,7 @@ function SkeletonOverlay({ frame, highlight = null, thin = false }: { frame: Tra
   const line = size / (thin ? 160 : 220);
   const visible = (index: number) => points[index][2] >= VISIBLE;
   return (
-    <svg className="skeleton-overlay" viewBox={`0 0 ${frame.image.width} ${frame.image.height}`} preserveAspectRatio="none">
+    <svg className="skeleton-overlay" viewBox={`0 0 ${frame.image.width} ${frame.image.height}`} preserveAspectRatio="xMidYMid meet">
       {SKELETON.map(([a, b]) => (visible(a) && visible(b) ? (
         <line key={`${a}-${b}`} x1={points[a][0]} y1={points[a][1]} x2={points[b][0]} y2={points[b][1]} stroke="#35d07f" strokeWidth={line} strokeLinecap="round" />
       ) : null))}

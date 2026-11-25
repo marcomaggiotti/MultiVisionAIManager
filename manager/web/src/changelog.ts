@@ -4,6 +4,12 @@ export type Release = { version: string; date: string; title: string; changes: s
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.18.1", date: "2026-11-25", title: "Analysis: keypoints on the large picture",
+    changes: [
+      "Analysis → Video keypoints: the skeleton of the large picture was stretched over the black side bars (portrait videos) and missed the joints; it is now scaled and centred like the picture, as in the thumbnails.",
+    ],
+  },
+  {
     version: "0.18.0", date: "2026-11-25", title: "The VLM module is its own project",
     changes: [
       "The VLM module moved, with its history, to github.com/marcomaggiotti/vlm_hub_engine: an independent web service with its own README, Docker Compose, tests and CI.",
