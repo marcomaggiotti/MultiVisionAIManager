@@ -371,3 +371,7 @@ pre.architecture { font-size: 11px; line-height: 1.45; overflow-x: auto; backgro
 .analysis-progress { position: relative; display: inline-flex; align-items: center; min-width: 150px; height: 30px; padding: 0 10px; border-radius: 8px; overflow: hidden; background: var(--panel-2); border: 1px solid var(--line); }
 .analysis-progress > span { position: absolute; inset: 0 auto 0 0; background: rgba(79, 140, 255, .35); transition: width .3s; }
 .analysis-progress > b { position: relative; }
+.analysis-status { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 14px; font-size: 13px; border-left: 3px solid var(--line); }
+.analysis-status.running { border-left-color: var(--accent); }
+.analysis-status.done { border-left-color: var(--good); }
+.analysis-status .btn { margin-left: auto; }
