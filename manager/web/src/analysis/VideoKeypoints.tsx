@@ -25,9 +25,20 @@ type TrackFrame = {
 };
 type VideoWithTrack = LibraryVideo & { keypoint_frames: number };
 
+type FramesView = "pictures" | "table";
+const VIEW_KEY = "videoKeypoints.view";
+/** "left shoulder" → "L shoulder": short column titles for the table. */
+const SHORT_NAMES = KEYPOINT_NAMES.map((name) => name.replace(/^left /, "L ").replace(/^right /, "R "));
+
+const savedView = (): FramesView => {
+  try { return localStorage.getItem(VIEW_KEY) === "table" ? "table" : "pictures"; } catch { return "pictures"; }
+};
+
 const frameUrl = (videoId: string, time: number, side: number) => `/api/videos/${videoId}/frame?t=${time.toFixed(3)}&max_side=${side}`;
 
-/** The saved keypoints drawn over a picture of the same frame (an SVG in the analysed picture's pixels). */
+/** The saved keypoints drawn over a picture of the same frame (an SVG in the analysed picture's pixels).
+ * "meet" scales and centres it like the picture's `object-fit: contain`, so it stays on the
+ * dancer when the large view adds black bars. */
 function SkeletonOverlay({ frame, highlight = null, thin = false }: { frame: TrackFrame; highlight?: number | null; thin?: boolean }) {
   if (!frame.keypoints || !frame.image) return null;
   const points = frame.keypoints;
@@ -35,7 +46,7 @@ function SkeletonOverlay({ frame, highlight = null, thin = false }: { frame: Tra
   const line = size / (thin ? 160 : 220);
   const visible = (index: number) => points[index][2] >= VISIBLE;
   return (
-    <svg className="skeleton-overlay" viewBox={`0 0 ${frame.image.width} ${frame.image.height}`} preserveAspectRatio="none">
+    <svg className="skeleton-overlay" viewBox={`0 0 ${frame.image.width} ${frame.image.height}`} preserveAspectRatio="xMidYMid meet">
       {SKELETON.map(([a, b]) => (visible(a) && visible(b) ? (
         <line key={`${a}-${b}`} x1={points[a][0]} y1={points[a][1]} x2={points[b][0]} y2={points[b][1]} stroke="#35d07f" strokeWidth={line} strokeLinecap="round" />
       ) : null))}
@@ -60,6 +71,7 @@ export function VideoKeypoints() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [view, setView] = useState<FramesView>(savedView);
   const grid = useRef<HTMLDivElement>(null);
   const latestRequest = useRef(0); // answers to older requests are ignored (a slow one must not overwrite a newer range)
   const video = videos.data?.find((candidate) => candidate.id === videoId);
@@ -104,8 +116,13 @@ export function VideoKeypoints() {
 
   // keep the selected thumbnail in view inside the grid
   useEffect(() => {
-    grid.current?.querySelector<HTMLElement>(".frame-thumb.on")?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [selected]);
+    grid.current?.querySelector<HTMLElement>(".frame-thumb.on, .kp-row.on")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [selected, view]);
+
+  const chooseView = (next: FramesView) => {
+    setView(next);
+    try { localStorage.setItem(VIEW_KEY, next); } catch { /* the choice is only not remembered */ }
+  };
 
   const series = useMemo(() => {
     const value = (frame: TrackFrame, axis: 0 | 1) => {
@@ -184,6 +201,57 @@ export function VideoKeypoints() {
 
       {video && frames && frames.length > 0 && (
         <>
+          <div className="row" style={{ gap: 8 }}>
+            <div className="seg" role="group" aria-label="How the frames are shown">
+              <button className={view === "pictures" ? "on" : ""} onClick={() => chooseView("pictures")}>▦ Pictures</button>
+              <button className={view === "table" ? "on" : ""} onClick={() => chooseView("table")}>☰ Table</button>
+            </div>
+            {view === "table" && <span className="small muted">One line per frame, keypoints 0–16 as columns (x, y in pixels; faded = not visible). Click a column title to follow that keypoint in the chart.</span>}
+          </div>
+          {view === "table" ? (
+            <div ref={grid} className="kp-table-wrap">
+              <table className="kp-table">
+                <thead>
+                  <tr>
+                    <th className="kp-sticky">Frame</th>
+                    <th>Time</th>
+                    <th>Movement</th>
+                    {SHORT_NAMES.map((name, index) => (
+                      <th key={name} className={`kp-column ${index === keypoint ? "on" : ""}`} title={`${index} · ${KEYPOINT_NAMES[index]}: follow it in the chart`}
+                        onClick={() => setKeypoint(index)} onMouseEnter={() => setHovered(index)} onMouseLeave={() => setHovered(null)}>
+                        <span className="mono">{index}</span><br />{name}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {frames.map((frame, index) => (
+                    <tr key={frame.source_time} className={`kp-row ${index === selected ? "on" : ""}`} onClick={() => setSelected(index)}>
+                      <td className="kp-sticky">
+                        <div className="frame-picture">
+                          <img src={frameUrl(video.id, frame.source_time, THUMBNAIL_SIDE)} alt="" loading="lazy" />
+                          <SkeletonOverlay frame={frame} thin />
+                        </div>
+                      </td>
+                      <td className="mono small">{frame.source_time.toFixed(2)} s{frame.adjusted ? " ✎" : ""}</td>
+                      <td className="small">{frame.movement ?? (frame.keypoints ? "" : <span className="muted">no dancer</span>)}</td>
+                      {KEYPOINT_NAMES.map((name, point) => {
+                        const value = frame.keypoints?.[point];
+                        if (!value) return <td key={name} className="muted">—</td>;
+                        const [x, y, visibility] = value;
+                        return (
+                          <td key={name} className={`mono small kp-cell ${visibility < VISIBLE ? "hidden-point" : ""} ${point === keypoint ? "on" : ""}`}
+                            title={`${KEYPOINT_NAMES[point]} · visibility ${Math.round(visibility * 100)} %`}>
+                            {x.toFixed(0)}<br />{y.toFixed(0)}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
           <div ref={grid} className="frame-grid">
             {frames.map((frame, index) => (
               <button key={frame.source_time} className={`frame-thumb ${index === selected ? "on" : ""}`} onClick={() => setSelected(index)}
@@ -197,6 +265,7 @@ export function VideoKeypoints() {
               </button>
             ))}
           </div>
+          )}
 
           {current && (
             <div className="grid result-split">
