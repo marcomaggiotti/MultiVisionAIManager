@@ -14,7 +14,7 @@
       "name": "clip",
       "title": "CLIP image-text embeddings",
       "url": "http://clip:8000",
-      "repository": "modules/clip",
+      "repository": "https://github.com/marcomaggiotti/visual-semantic-engine",
       "launcher": { "type": "docker", "service": "clip" },
       "autostart": true,
       "idle_stop_minutes": 0,

@@ -4,6 +4,13 @@ export type Release = { version: string; date: string; title: string; changes: s
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.22.0", date: "2026-11-25", title: "The CLIP module is its own project",
+    changes: [
+      "The CLIP module moved, with its history, to github.com/marcomaggiotti/visual-semantic-engine: an independent web service with its own README (including how CLIP works), Docker Compose, tests and CI.",
+      "modules/clip is now a git submodule (like YOLO and the VLM): ./start.sh clones it, ./start.sh --update updates it; the manager uses its API as before and nothing changes in the web interface.",
+    ],
+  },
+  {
     version: "0.21.0", date: "2026-11-25", title: "Snapshot → the frame in Analysis",
     changes: [
       "Live studio: 📷 Snapshot (or S) on a frame of an analysed library video keeps the snapshot in the library and opens Analysis → Video keypoints at that frame (5 s of video around it), ready to adjust. Camera frames still open the snapshot dialog.",

@@ -6,3 +6,7 @@
 	path = modules/vlm
 	url = https://github.com/marcomaggiotti/vlm_hub_engine
 	branch = claude/serene-dirac-srols1
+[submodule "modules/clip"]
+	path = modules/clip
+	url = https://github.com/marcomaggiotti/visual-semantic-engine
+	branch = claude/serene-dirac-srols1
