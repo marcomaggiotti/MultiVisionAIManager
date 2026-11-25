@@ -1,10 +1,10 @@
 import { DragEvent, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { useLoad } from "../hooks";
 import { ErrorBox, Page, Tabs } from "../components/ui";
 import { SnapshotsGallery } from "../library/SnapshotsGallery";
 import { useLiveSession } from "../live/LiveSessionContext";
+import { notifyAnalysisStarted } from "../components/AnalysisIndicator";
 import { VideoCutDialog } from "../live/VideoCutDialog";
 import {
   LibraryVideo, analyseAgain, analysisLabel, deleteVideo, formatBytes, formatDuration, isAnalysing, listVideos, sendVideoTo,
@@ -29,8 +29,6 @@ export default function Library() {
   const [cutting, setCutting] = useState<LibraryVideo | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [section, setSection] = useState<"videos" | "snapshots">("videos");
-  /** Videos just added: the window waits for their analysis. */
-  const [waitingFor, setWaitingFor] = useState<string[]>([]);
 
   const all = videos.data ?? [];
   const byId = new Map(all.map((video) => [video.id, video]));
@@ -50,7 +48,7 @@ export default function Library() {
     try {
       const result = await uploadVideos(videosOnly, (share) => setProgress(`Uploading ${videosOnly.length} video${videosOnly.length > 1 ? "s" : ""}… ${Math.round(share * 100)} %`));
       if (result.errors.length) setError(result.errors.map((failure) => `${failure.file}: ${failure.error}`).join("\n"));
-      if (result.saved.length) setWaitingFor(result.saved.map((video) => video.id));
+      if (result.saved.length) notifyAnalysisStarted(); // the progress shows in the top bar
     } finally {
       setProgress(null);
       videos.reload();
@@ -62,10 +60,9 @@ export default function Library() {
   });
   const reanalyse = (video: LibraryVideo) => {
     if (window.confirm(`Analyse ${video.name} again? Its keypoints are computed again (your corrections are kept).`)) {
-      void run(async () => { await analyseAgain(video.id); setWaitingFor([video.id]); videos.reload(); });
+      void run(async () => { await analyseAgain(video.id); notifyAnalysisStarted(); videos.reload(); });
     }
   };
-  const waiting = waitingFor.map((id) => byId.get(id)).filter((video): video is LibraryVideo => !!video);
   const openIn = (target: "compare" | "vlm", video: LibraryVideo) => {
     sendVideoTo(target, video);
     navigate(target === "compare" ? "/compare" : "/vlm");
@@ -164,11 +161,10 @@ export default function Library() {
         </div>
       )}
       {cutting && (
-        <VideoCutDialog source={{ libraryVideo: cutting }} onSaved={(made) => { videos.reload(); setWaitingFor([made.id]); }}
+        <VideoCutDialog source={{ libraryVideo: cutting }} onSaved={() => { videos.reload(); notifyAnalysisStarted(); }}
           onClose={() => setCutting(null)} />
       )}
-      {waiting.length > 0 && createPortal(<AnalysisWait videos={waiting} onClose={() => setWaitingFor([])}
-        onOpen={waiting.length === 1 && waiting[0].analysis?.status === "done" ? () => openInLiveStudio(waiting[0]) : undefined} />, document.body)}
+
     </Page>
   );
 }
@@ -185,32 +181,6 @@ function AnalysisBadge({ video, onRetry }: { video: LibraryVideo; onRetry: () =>
     <div className="analysis-badge running">
       <div className="analysis-bar"><span style={{ width: `${Math.round(state.progress * 100)}%` }} /></div>
       <span className="small">{analysisLabel(video)}</span>
-    </div>
-  );
-}
-
-/** Shown after adding videos: the analysis runs in the manager, wait for it. */
-function AnalysisWait({ videos, onClose, onOpen }: { videos: LibraryVideo[]; onClose: () => void; onOpen?: () => void }) {
-  const done = videos.filter((video) => video.analysis?.status === "done").length;
-  return (
-    <div className="modal-backdrop">
-      <div className="glass modal analysis-wait" role="dialog" aria-label="Analysing the video">
-        <h3 style={{ marginTop: 0 }}>
-          {done === videos.length ? "✓ Analysed: " : "Analysing "}{videos.length > 1 ? `${videos.length} videos` : videos[0].name}{done === videos.length ? "" : "…"}
-        </h3>
-        <p className="small muted">Every frame goes through YOLO pose and the ballet rules: keypoints, angles, movements and corrections are computed once and saved with the video. The live studio and the Analysis tab then show them at once.</p>
-        {videos.map((video) => (
-          <div key={video.id} className="analysis-wait-row">
-            <span className="small" title={video.name}>{video.name}</span>
-            <AnalysisBadge video={video} onRetry={() => undefined} />
-          </div>
-        ))}
-        <div className="row" style={{ gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
-          <span className="small muted" style={{ marginRight: "auto" }}>{done}/{videos.length} done{done < videos.length ? " · it goes on if you close this window" : ""}</span>
-          <button className="ghost" onClick={onClose}>Close</button>
-          {onOpen && <button onClick={onOpen}>Open in the live studio</button>}
-        </div>
-      </div>
     </div>
   );
 }

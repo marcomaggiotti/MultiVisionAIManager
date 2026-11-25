@@ -159,8 +159,9 @@ they are uploaded once and chosen anywhere:
 
 - **Add** videos (button or drag and drop, several at once, with a progress bar); each is
   checked with `ffprobe` (duration, size), gets a thumbnail and is **analysed** by the
-  manager: a window shows the progress until the analysis is done (it goes on in the
-  background if closed); each card shows its state, *↻* analyses it again.
+  manager: the progress shows at the top right of every page (⏳ *Analysing … %*, then
+  *✓ analysed · open ▶*, which opens it in the live studio); each card shows its state,
+  *↻* analyses it again.
   Code: `manager/api/app/media/video_analysis.py` (`VideoAnalyses`: queue, one video at a
   time, resumed after a restart); stored in `<data>/analyses/<video id>/` (`analysis.json`
   and the analysed pictures), the keypoint track and a session. API:

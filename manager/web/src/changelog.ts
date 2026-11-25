@@ -4,6 +4,12 @@ export type Release = { version: string; date: string; title: string; changes: s
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.23.2", date: "2026-11-25", title: "Analysis progress in the top bar",
+    changes: [
+      "The analysis of library videos shows at the top right of every page: “⏳ Analysing name 68 %” (+N when more wait), then “✓ name analysed · open ▶” for a moment, which opens it in the live studio. The pop-up window after an upload is gone.",
+    ],
+  },
+  {
     version: "0.23.1", date: "2026-11-25", title: "Live studio: no Save button",
     changes: [
       "The Save button is gone: library videos are saved by their analysis, pictures when their analysis ends, and a camera session when you press ■ Stop (Sessions tab).",

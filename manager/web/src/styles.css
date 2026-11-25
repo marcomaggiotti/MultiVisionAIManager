@@ -383,6 +383,11 @@ pre.architecture { font-size: 11px; line-height: 1.45; overflow-x: auto; backgro
 .analysis-badge.running { flex-direction: column; align-items: stretch; gap: 2px; color: var(--fg); }
 .analysis-bar { height: 6px; border-radius: 3px; background: var(--panel-2); overflow: hidden; }
 .analysis-bar > span { display: block; height: 100%; background: var(--accent); transition: width .4s; }
-.analysis-wait { width: min(560px, 92vw); }
-.analysis-wait-row { display: grid; grid-template-columns: minmax(0, 1fr) 220px; gap: 10px; align-items: center; padding: 4px 0; }
-.analysis-wait-row > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---- top bar: analysis of library videos ---- */
+.analysis-pill { position: relative; flex-direction: column; align-items: stretch; gap: 3px; max-width: 300px; cursor: pointer; color: var(--fg); font-weight: 400; padding: 4px 10px; }
+.analysis-pill:hover { border-color: var(--accent); }
+.analysis-pill.done { color: var(--good); border-color: var(--good); }
+.analysis-pill-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.analysis-pill-bar { height: 3px; border-radius: 2px; background: var(--panel-2); overflow: hidden; }
+.analysis-pill-bar > span { display: block; height: 100%; background: var(--accent); transition: width .4s; }
