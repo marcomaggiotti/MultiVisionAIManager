@@ -17,7 +17,7 @@
       "name": "clip",
       "title": "CLIP image-text embeddings",
       "url": "http://127.0.0.1:8002",
-      "repository": "modules/clip",
+      "repository": "https://github.com/marcomaggiotti/visual-semantic-engine",
       "launcher": {
         "type": "process",
         "cwd": "modules/clip",

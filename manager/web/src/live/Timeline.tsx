@@ -159,7 +159,7 @@ function PlayerControls({ frames, index, player, actions }: { frames: Recorded[]
       <input type="range" min={0} max={Math.max(0, frameCount - 1)} value={Math.max(0, index)}
         onChange={(event) => actions.onSeek(Number(event.target.value))} disabled={!hasFrames} aria-label="Position" />
       <span className="mono small muted">{frameCount} frames</span>
-      <button className="small" title="Snapshot of the shown frame (S)" disabled={!hasFrames} onClick={actions.onSnapshot}>📷 Snapshot</button>
+      <button className="small" title="Snapshot of the shown frame (S): a saved library video opens at this frame in Analysis" disabled={!hasFrames} onClick={actions.onSnapshot}>📷 Snapshot</button>
       <button className="small ghost" title="Correct the keypoints of the shown frame (E)" disabled={!frames[index]?.result.dancer}
         onClick={actions.onAdjustKeypoints}>✎ Adjust keypoints</button>
       <button className={`small ${player.following ? "" : "ghost"}`} onClick={actions.onFollow} title="Follow the newest frame">

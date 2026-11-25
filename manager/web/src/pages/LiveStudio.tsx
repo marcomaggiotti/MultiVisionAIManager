@@ -1,21 +1,22 @@
 import { useCallback, useMemo, useRef, useState } from "react";
-import { api, form, json, post } from "../api";
+import { useNavigate } from "react-router-dom";
+import { api, form, post } from "../api";
 import { useLoad } from "../hooks";
 import { Slider } from "../components/ui";
 import { BodyMap, CameraPanel, PanelSlotContext, PoseCard, Skeleton3D } from "../live/panels";
 import { ChartPanels, JointAnglesPanel, KeyPositionsPanel } from "../live/morePanels";
 import { PlayerActions, Timeline } from "../live/Timeline";
-import { Source } from "../live/useLive";
 import { useLiveSession } from "../live/LiveSessionContext";
 import { usePlayerKeyboard } from "../live/usePlayerKeyboard";
 import { Overlay } from "../live/drawing";
+import { createSnapshotFile, describeFrame } from "../live/snapshot";
+import { saveSnapshot } from "../library/snapshots";
 import { SnapshotDialog } from "../live/SnapshotDialog";
 import { FrameAdjuster } from "../live/FrameAdjuster";
 import { VideoCutDialog } from "../live/VideoCutDialog";
 import { KeypointsLive } from "../live/KeypointsLive";
 import { KeypointCollection } from "../live/KeypointCollection";
-import { VideoLibraryPicker } from "../library/VideoLibraryPicker";
-import { videoAsFile } from "../library/videos";
+import { formatDuration, listVideos, videoAsFile } from "../library/videos";
 import { Recorded, STATUS_COLOR, Status, Vocabulary, fmtTime, mediaKeyOf, stepColor } from "../live/types";
 
 const PART_LABEL: Record<string, string> = {
@@ -50,12 +51,16 @@ function savedPanels(): string[] {
 
 export default function LiveStudio() {
   // Kept by the app while other tabs are shown: the video goes on where it was.
-  const { live, playback, source, setSource, files, setFiles, overlays, setOverlays, mirror, setMirror } = useLiveSession();
+  const {
+    live, playback, source, setSource, files, setFiles, overlays, setOverlays, mirror, setMirror, analyse, save, saving, updateFrame, analysisSaved,
+  } = useLiveSession();
+  const navigate = useNavigate();
+  const library = useLoad(listVideos, []);
   const vocab = useLoad(() => api<Vocabulary>("/api/ballet/vocabulary"), []).data;
   const [snapshotFrame, setSnapshotFrame] = useState<Recorded | null>(null);
   const [adjustedFrameIndex, setAdjustedFrameIndex] = useState<number | null>(null);
   const [cutting, setCutting] = useState(false);
-  const [pickingFromLibrary, setPickingFromLibrary] = useState(false);
+  const [opening, setOpening] = useState(false);
   // the keypoint followed: ringed in panel A, charted in the collection (hovering previews another)
   const [followedKeypoint, setFollowedKeypoint] = useState(15);
   const [hoveredKeypoint, setHoveredKeypoint] = useState<number | null>(null);
@@ -74,14 +79,29 @@ export default function LiveStudio() {
   const frames = live.frames;
   const latest = frames.length ? frames[frames.length - 1] : null;
   const isLive = live.status === "live";
+  const analysing = isLive && source !== "camera";
+  const chosenVideo = source === "video" && files[0] ? library.data?.find((video) => video.media_key === mediaKeyOf(files[0])) : undefined;
   const frame = playback.shownFrame;
 
   const { holdCurrentFrame, shownIndex } = playback;
-  const openSnapshot = useCallback(() => {
+  /** 📷: a frame of a saved library video is kept in the snapshot library and opened in
+   * Analysis (Video keypoints, at that frame); a camera frame (or one not saved yet)
+   * opens the snapshot dialog. */
+  const openSnapshot = useCallback(async () => {
     if (!frame) return;
     holdCurrentFrame();
-    setSnapshotFrame(frame);
-  }, [frame, holdCurrentFrame]);
+    const video = library.data?.find((candidate) => candidate.media_key === frame.mediaKey);
+    if (!video || frame.sourceTime == null || !analysisSaved) {
+      setSnapshotFrame(frame);
+      return;
+    }
+    try {
+      await saveSnapshot({ file: await createSnapshotFile(frame, overlays, false), ...describeFrame(frame) });
+    } catch (failure) {
+      live.setError(`The snapshot was not kept in the library: ${failure instanceof Error ? failure.message : String(failure)}`);
+    }
+    navigate(`/analysis?video=${encodeURIComponent(video.id)}&t=${frame.sourceTime.toFixed(3)}`);
+  }, [frame, holdCurrentFrame, library.data, analysisSaved, overlays, live, navigate]);
   const openKeypointAdjustment = useCallback(() => {
     if (!frame?.result.dancer) return;
     holdCurrentFrame();
@@ -90,7 +110,7 @@ export default function LiveStudio() {
   const shortcuts = useMemo(() => ({ snapshot: openSnapshot, adjustKeypoints: openKeypointAdjustment }), [openSnapshot, openKeypointAdjustment]);
   const dialogOpen = snapshotFrame !== null || adjustedFrameIndex !== null || cutting;
   const videoFile = source === "video" ? files[0] : undefined;
-  /** The new, cut video replaces the chosen one; Start analyses it. */
+  /** The new, cut video replaces the chosen one and is analysed. */
   const analyseCutVideo = async (file: File) => {
     await live.stop();
     live.reset();
@@ -118,41 +138,31 @@ export default function LiveStudio() {
     live.configure({ [key]: value });
   };
 
-  const start = () => { playback.startFollowing(); live.start(source, files); };
-
-  const save = async () => {
-    setBusy("save");
+  /** A library video: opened, analysed whole (every frame, keypoints and feedback), saved, then played. */
+  const chooseVideo = async (videoId: string) => {
+    const video = library.data?.find((candidate) => candidate.id === videoId);
+    if (!video) return;
+    setOpening(true);
+    live.setError(null);
     try {
-      const series = frames.map((f) => ({
-        t: f.result.t, held: f.result.current.step, pose: f.result.evaluation?.pose?.step ?? null, motion: f.result.motion,
-        angles: f.result.evaluation?.angles ?? null, parts: f.result.evaluation?.parts ?? null,
-        video_time: f.sourceTime, adjusted: !!f.result.adjusted,
-        keypoints: f.result.dancer?.keypoints.map(([x, y, v]) => [Math.round(x * 10) / 10, Math.round(y * 10) / 10, Math.round(v * 1000) / 1000]) ?? null,
-      }));
-      const body = {
-        id: live.session, title: `${dancer || "Dancer"} · ${new Date().toLocaleString()}`, dancer,
-        duration_s: frames.length ? frames[frames.length - 1].result.t : 0, frames: frames.length,
-        counts, events: live.events, comments: live.comments, series,
-      };
-      const r = await api("/api/live/sessions", json("POST", body));
-      // the keypoints of each analysed frame also go with the video itself (Analysis → Video keypoints)
-      const byVideo = new Map<string, typeof frames>();
-      frames.filter((f) => f.mediaKey && f.sourceTime != null).forEach((f) => byVideo.set(f.mediaKey!, [...(byVideo.get(f.mediaKey!) ?? []), f]));
-      const tracks: string[] = [];
-      for (const [mediaKey, videoFrames] of byVideo) {
-        const saved = await api<{ saved: number; total: number }>("/api/keypoint-tracks", json("PUT", {
-          media_key: mediaKey, session_id: r.id,
-          frames: videoFrames.map((f) => ({
-            source_time: f.sourceTime, keypoints: f.result.dancer?.keypoints ?? null, box: f.result.dancer?.box ?? null,
-            image: f.result.image, movement: f.result.current.step ?? f.result.evaluation?.pose?.step ?? null, adjusted: !!f.result.adjusted,
-          })),
-        }));
-        tracks.push(`${saved.saved} frames of ${mediaKey.split("|")[0]} (${saved.total} saved for this video)`);
-      }
-      const where = tracks.length ? ` Keypoints: ${tracks.join("; ")}: Analysis → Video keypoints.` : "";
-      live.addComment({ t: frame?.result.t ?? 0, pose: null, status: "ok", message: `Session saved (${r.id}): open it in the Sessions tab.${where}`, kind: "coach" });
-    } catch (e) { live.setError(e instanceof Error ? e.message : String(e)); }
-    setBusy(null);
+      const file = await videoAsFile(video);
+      await live.stop();
+      live.reset();
+      playback.reset();
+      setSource("video");
+      setFiles([file]);
+    } catch (failure) {
+      live.setError(failure instanceof Error ? failure.message : String(failure));
+    }
+    setOpening(false);
+  };
+  const startCamera = async () => {
+    await live.stop();
+    live.reset();
+    playback.reset();
+    setSource("camera");
+    setFiles([]);
+    analyse("camera", []);
   };
 
   const coach = async () => {
@@ -202,7 +212,7 @@ export default function LiveStudio() {
           <div className="kv">
             <dt>Discipline</dt><dd>Classical ballet</dd>
             <dt>Session</dt><dd className="mono">{live.session ?? "—"}</dd>
-            <dt>Status</dt><dd>{isLive ? <><span className="live-dot" /> live</> : live.status}</dd>
+            <dt>Status</dt><dd>{analysing ? <><span className="live-dot" /> analysing {Math.round((live.progress ?? 0) * 100)} %</> : isLive ? <><span className="live-dot" /> live</> : live.status}</dd>
             <dt>Speed</dt><dd>{isLive ? `${live.fps.toFixed(1)} fps` : "—"}{latest ? ` · ${latest.result.latency_ms.total} ms` : ""}</dd>
             <dt>Model</dt><dd className="mono small">{latest?.result.model?.split("/").pop() ?? "—"}</dd>
             <dt>Adjusted</dt><dd title="Moments of this video whose keypoints were corrected by hand (applied when the video is analysed)">
@@ -249,26 +259,24 @@ export default function LiveStudio() {
       {/* ---------- centre ---------- */}
       <div className="col">
         <div className="glass toolbar">
-          <div className="seg">
-            {(["camera", "video", "pictures"] as Source[]).map((s) => (
-              <button key={s} className={source === s ? "on" : ""} disabled={isLive} onClick={() => {
-                if (s !== source) { setSource(s); setFiles([]); if (fileInput.current) fileInput.current.value = ""; }
-                // videos come from the library only; pictures from this device
-                if (s === "video") setPickingFromLibrary(true);
-                if (s === "pictures") setTimeout(() => fileInput.current?.click(), 0);
-              }}>
-                {{ camera: "◉ Camera", video: "📚 Library video", pictures: "▦ Pictures" }[s]}
-              </button>
+          <select value={chosenVideo?.id ?? ""} disabled={opening} aria-label="Video from the library"
+            onChange={(event) => void chooseVideo(event.target.value)} style={{ width: "auto", maxWidth: 260 }}
+            title="Videos are added in the Library tab; choosing one analyses it whole and saves it">
+            <option value="">{opening ? "Opening…" : source === "video" && files[0] && !chosenVideo ? files[0].name : "🎞 Choose a video…"}</option>
+            {(library.data ?? []).map((video) => (
+              <option key={video.id} value={video.id}>{video.name} · {formatDuration(video.duration)}</option>
             ))}
+          </select>
+          <div className="seg">
+            <button className={source === "camera" && isLive ? "on" : ""} onClick={startCamera} title="Analyse the camera in real time">◉ Camera</button>
+            <button className={source === "pictures" ? "on" : ""} onClick={() => fileInput.current?.click()} title="Analyse pictures from this device">▦ Pictures</button>
           </div>
-          <input ref={fileInput} type="file" hidden multiple accept="image/*" onChange={(e) => { setFiles(Array.from(e.target.files ?? [])); live.setError(null); }} />
-          {source !== "camera" && (
-            <button className="small ghost" disabled={isLive} title={files.map((f) => f.name).join("\n")}
-              onClick={() => (source === "video" ? setPickingFromLibrary(true) : fileInput.current?.click())}
-              style={{ maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {files.length === 0 ? (source === "video" ? "Choose from the library…" : "Choose pictures…") : files.length === 1 ? files[0].name : `${files.length} pictures`}
-            </button>
-          )}
+          <input ref={fileInput} type="file" hidden multiple accept="image/*" onChange={(e) => {
+            const picked = Array.from(e.target.files ?? []);
+            e.target.value = "";
+            if (!picked.length) return;
+            void live.stop().then(() => { live.reset(); playback.reset(); setSource("pictures"); setFiles(picked); live.setError(null); });
+          }} />
           {videoFile && (
             <button className="small ghost" onClick={() => { if (isLive) playback.holdCurrentFrame(); setCutting(true); }}
               title="Keep only a part of the video: creates a new video file">✂ Cut video</button>
@@ -280,10 +288,18 @@ export default function LiveStudio() {
             <button className={mirror ? "on" : ""} onClick={() => setMirror(!mirror)} title="Show the camera like a studio mirror (panel A only)">Mirror</button>
           </div>
           <span style={{ flex: 1 }} />
-          {isLive || live.status === "connecting"
-            ? <button className="danger" onClick={() => live.stop()}>■ Stop</button>
-            : <button onClick={start} disabled={source !== "camera" && !files.length}>● Start</button>}
-          <button className="ghost" onClick={save} disabled={!frames.length || busy !== null}>{busy === "save" ? "Saving…" : "Save"}</button>
+          {analysing && (
+            <span className="analysis-progress" title="Every frame of the video is analysed, then the session and the keypoints are saved">
+              <span style={{ width: `${Math.round((live.progress ?? 0) * 100)}%` }} />
+              <b className="small">Analysing {Math.round((live.progress ?? 0) * 100)} %</b>
+            </span>
+          )}
+          {(isLive || live.status === "connecting") && <button className="danger" onClick={() => live.stop()}>■ Stop</button>}
+          {!isLive && source !== "camera" && files.length > 0 && live.status !== "connecting" && (
+            <button className="small ghost" onClick={() => analyse()} title="Analyse the whole video again (e.g. after changing the properties) and save it">↻ Analyse again</button>
+          )}
+          {source === "camera" && <button className="ghost" onClick={save} disabled={!frames.length || isLive || saving || busy !== null}>{saving ? "Saving…" : "Save"}</button>}
+          {source !== "camera" && saving && <span className="small muted">Saving…</span>}
           <button className="success" onClick={coach} disabled={!frame || busy !== null} title="Deeper feedback on the shown frame (CLIP + VLM)">{busy === "coach" ? "Asking…" : "AI coach"}</button>
           <button className="danger" onClick={() => { live.reset(); playback.reset(); }} disabled={isLive || !frames.length}>Reset</button>
         </div>
@@ -300,18 +316,12 @@ export default function LiveStudio() {
         <KeypointCollection frames={frames} shownIndex={playback.shownIndex} version={live.version}
           keypoint={hoveredKeypoint ?? followedKeypoint} onKeypoint={setFollowedKeypoint} onSeek={playback.seek} />
         {snapshotFrame && <SnapshotDialog frame={snapshotFrame} overlays={overlays} onClose={() => setSnapshotFrame(null)} />}
-        {pickingFromLibrary && (
-          <VideoLibraryPicker onClose={() => setPickingFromLibrary(false)} onPick={async (video) => {
-            setFiles([await videoAsFile(video)]);
-            live.setError(null);
-          }} />
-        )}
         {cutting && videoFile && (
           <VideoCutDialog source={{ file: videoFile }} onUse={analyseCutVideo} onClose={() => setCutting(false)}
             startAt={frame && frame.mediaKey === mediaKeyOf(videoFile) ? frame.sourceTime : null} />
         )}
         {adjustedFrameIndex !== null && frames[adjustedFrameIndex] && (
-          <FrameAdjuster frames={frames} index={adjustedFrameIndex} onFrameChange={live.updateFrame} onClose={() => setAdjustedFrameIndex(null)} />
+          <FrameAdjuster frames={frames} index={adjustedFrameIndex} onFrameChange={updateFrame} onClose={() => setAdjustedFrameIndex(null)} />
         )}
       </div>
 
