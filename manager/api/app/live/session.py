@@ -65,13 +65,17 @@ class LiveSession:
     def elapsed(self) -> float:
         return time.time() - self.started_at
 
-    def process_detections(self, yolo_response: dict, source_time: float | None = None) -> dict:
+    def process_detections(
+        self, yolo_response: dict, source_time: float | None = None, video_clock: bool = False
+    ) -> dict:
         """Update the session with the YOLO module's answer for one frame.
 
         ``source_time`` is the frame's time inside the video: a saved keypoint
-        adjustment at that moment replaces the model's keypoints.
+        adjustment at that moment replaces the model's keypoints. With ``video_clock``
+        (a whole video analysed faster than real time) the frame's time, the movements
+        and the comments are measured in video time instead of the wall clock.
         """
-        now = self.elapsed()
+        now = source_time if video_clock and source_time is not None else self.elapsed()
         self.frame_count += 1
         result: dict = {
             "frame": self.frame_count,
@@ -134,9 +138,9 @@ class LiveSession:
         displacement = mean_joint_displacement(previous, raw_keypoints, body_height, decimals=4)
         return displacement
 
-    def summary(self) -> dict:
-        """The session so far (the movement being held is closed first)."""
-        self.tracker.finish_current(self.elapsed())
+    def summary(self, now: float | None = None) -> dict:
+        """The session so far (the movement being held is closed first, at ``now``)."""
+        self.tracker.finish_current(self.elapsed() if now is None else now)
         return {
             "id": self.id,
             "started": self.started_at,

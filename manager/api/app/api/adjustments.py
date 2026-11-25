@@ -62,7 +62,10 @@ def save_adjustment(adjustment_request: AdjustmentRequest, request: Request, sto
     for session in request.app.state.live_sessions.values():
         if session.media_key == adjustment.media_key:
             session.add_adjustment(adjustment)
-    return {"adjustment": adjustment.as_dict(), "evaluation": evaluate_pose(adjustment.keypoints).to_api()}
+    evaluation = evaluate_pose(adjustment.keypoints).to_api()
+    # the analysed video (and its keypoint track) shows the corrected frame from now on
+    request.app.state.video_analyses.apply_saved_adjustment(adjustment, evaluation)
+    return {"adjustment": adjustment.as_dict(), "evaluation": evaluation}
 
 
 @router.delete("/api/keypoint-adjustments", status_code=204)
@@ -76,4 +79,5 @@ def delete_adjustment(
     for session in request.app.state.live_sessions.values():
         if session.media_key == media_key:
             session.remove_adjustment(source_time)
+    request.app.state.video_analyses.apply_adjustment(media_key, source_time, None, None, adjusted=False)
     return Response(status_code=204)

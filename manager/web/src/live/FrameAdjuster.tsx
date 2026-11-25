@@ -14,8 +14,9 @@ export function FrameAdjuster({ frames, index, onFrameChange, onClose }: {
   onClose: () => void;
 }) {
   const frame = frames[index];
-  const pictures = useMemo(() => [frame.blob as File], [frame.blob]);
-  const [imageSrc] = useObjectUrls(pictures);
+  const pictures = useMemo(() => (frame.blob ? [frame.blob as File] : []), [frame.blob]);
+  const [objectUrl] = useObjectUrls(pictures);
+  const imageSrc = frame.imageUrl ?? objectUrl;
   const { mediaKey, sourceTime } = frame;
   const dancer = frame.result.dancer;
   if (!dancer || !imageSrc) return null;

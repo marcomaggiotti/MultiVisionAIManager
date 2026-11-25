@@ -232,7 +232,7 @@ export function VideoKeypoints({ focus = null }: { focus?: FrameFocus | null }) 
         <ErrorBox error={error ?? videos.error} />
         {videos.data && !videos.data.length && <p className="small muted">The library is empty: add videos in the Library tab.</p>}
         {video && !video.keypoint_frames && (
-          <p className="small muted">No keypoints saved for this video yet: choose it in the live studio, it is analysed and saved by itself.</p>
+          <p className="small muted">No keypoints for this video yet: it is analysed by the manager when it is added to the library (see its progress in the Library tab).</p>
         )}
         {frames && <p className="small muted">{frames.length} frame{frames.length === 1 ? "" : "s"} with saved keypoints between {start} s and {end} s{frames.length ? " · click one (or ← / →)" : ""}.</p>}
       </Card>

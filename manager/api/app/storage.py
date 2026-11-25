@@ -187,6 +187,13 @@ class HistoryStore:
                 ),
             )
 
+    def rename_adjustments(self, old_key: str, new_key: str) -> int:
+        """The video was renamed (its media key changed): its adjustments follow it."""
+        with self._connect() as connection:
+            return connection.execute(
+                "UPDATE OR REPLACE keypoint_adjustments SET media_key = ? WHERE media_key = ?", (new_key, old_key)
+            ).rowcount
+
     def delete_adjustment(self, media_key: str, source_time: float) -> None:
         with self._connect() as connection:
             deleted = connection.execute(

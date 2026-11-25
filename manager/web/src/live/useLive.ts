@@ -317,6 +317,19 @@ export function useLive() {
     refresh();
   };
 
+  /** Show a stored analysis (a library video analysed by the manager): nothing is analysed here. */
+  const load = (recorded: Recorded[], loadedEvents: PoseEvent[], loadedComments: Comment[], sessionId: string, adjusted: number[]) => {
+    frames.current = recorded;
+    events.current = [...loadedEvents];
+    comments.current = [...loadedComments];
+    setSession(sessionId);
+    setAdjustedTimes(adjusted);
+    setProgress(null);
+    setError(null);
+    setStatus("idle");
+    refresh();
+  };
+
   const reset = () => {
     frames.current = [];
     events.current = [];
@@ -334,7 +347,7 @@ export function useLive() {
   return {
     status, error, setError, session, version, fps,
     frames: frames.current, events: events.current, comments: comments.current,
-    start, stop, reset, configure, addComment, settings: settings.current,
+    start, stop, reset, load, configure, addComment, settings: settings.current,
     capturePaused, pauseCapture, resumeCapture, progress, completedRuns,
     adjustedTimes, updateFrame,
   };

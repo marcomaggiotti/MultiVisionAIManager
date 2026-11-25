@@ -96,3 +96,10 @@ class KeypointTrackStore:
     def delete(self, media_key: str) -> int:
         with self._connect() as connection:
             return connection.execute("DELETE FROM video_keypoints WHERE media_key = ?", (media_key,)).rowcount
+
+    def rename(self, old_key: str, new_key: str) -> int:
+        """The video was renamed (its media key changed): its track follows it."""
+        with self._connect() as connection:
+            return connection.execute(
+                "UPDATE OR REPLACE video_keypoints SET media_key = ? WHERE media_key = ?", (new_key, old_key)
+            ).rowcount

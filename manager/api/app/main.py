@@ -39,14 +39,17 @@ from app.api import (
     videos,
     vlm,
 )
+from app.api.dependencies import running_yolo_url
 from app.api.errors import register_error_handlers
 from app.config import Settings, get_settings
 from app.flows.engine import FlowRunner
 from app.history.recorder import UsageRecorder
 from app.history.store import UsageHistory
+from app.live import LiveSession, process_frame
 from app.media.keypoint_tracks import KeypointTrackStore
 from app.media.library import VideoLibrary
 from app.media.snapshots import SnapshotLibrary
+from app.media.video_analysis import VideoAnalyses
 from app.modules import ModuleRegistry, load_modules
 from app.storage import HistoryStore
 from app.version import manager_version
@@ -99,11 +102,24 @@ def create_app(
         )
         app.state.flow_runner = FlowRunner(app.state.services, app.state.prompts)
         app.state.live_sessions = {}
-        idle_watcher = asyncio.create_task(app.state.registry.stop_idle_modules_forever())
+
+        async def analyse_frame(jpeg: bytes, session: LiveSession, source_time: float, confidence: float) -> dict:
+            yolo_url = await running_yolo_url(app.state.registry)
+            return await process_frame(http_client, yolo_url, session, jpeg, confidence, source_time, video_clock=True)
+
+        app.state.video_analyses = VideoAnalyses(
+            data_dir, app.state.store.database_path, app.state.library, app.state.store,
+            app.state.keypoint_tracks, analyse_frame,
+        )  # fmt: skip
+        background = [asyncio.create_task(app.state.registry.stop_idle_modules_forever())]
+        if settings.analyse_videos:
+            app.state.video_analyses.resume()
+            background.append(asyncio.create_task(app.state.video_analyses.run_forever()))
         yield
-        idle_watcher.cancel()
-        with suppress(asyncio.CancelledError):
-            await idle_watcher
+        for task in background:
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
         await http_client.aclose()
         if docker_client is not None:
             await docker_client.aclose()
