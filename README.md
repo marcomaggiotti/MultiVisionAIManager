@@ -44,7 +44,9 @@ persist are written to the feedback log, with the time, so you can jump back to 
   *Max frames per second* setting, at most 1500 frames), with a progress bar; at the end the
   session and the keypoints are **saved by themselves** and the video plays back with its
   analysis, ready to inspect and to adjust (an adjusted frame replaces its saved keypoints).
-  *↻ Analyse again* re-runs it with new properties. The camera runs in real time until
+  *↻ Analyse again* re-runs it with new properties. **📷 Snapshot** (S) on a frame of the saved video keeps
+  it in the snapshot library and opens that frame in *Analysis → Video keypoints*
+  (`/analysis?video=<id>&t=<seconds>`), where it can be adjusted or opened in YOLO, CLIP or the VLM. The camera runs in real time until
   *■ Stop*; its *Save* stays manual.
 - **AI coach** sends the shown frame through the full pipeline (CLIP + VLM) for a
   teacher-style comment. **Save** (camera; automatic for videos) stores the session (counts, events, comments, angle

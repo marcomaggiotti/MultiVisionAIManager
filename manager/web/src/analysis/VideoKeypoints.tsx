@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api, json } from "../api";
 import { KeypointEditor } from "../components/KeypointEditor";
 import { ImageSize, saveAdjustment } from "../live/adjustments";
@@ -9,8 +10,10 @@ import { KEYPOINT_NAMES, SKELETON } from "../components/ImageOverlay";
 import { KeypointsPanel } from "../components/KeypointsPanel";
 import { download } from "../live/keypointData";
 import { LibraryVideo, formatDuration } from "../library/videos";
+import { SnapshotTarget, sendSnapshot } from "../live/snapshot";
 
 const VISIBLE = 0.5;
+const FOCUS_MARGIN_S = 5; // a focused frame opens with this much video around it
 const THUMBNAIL_SIDE = 240;
 const DETAIL_SIDE = 960;
 
@@ -58,8 +61,12 @@ function SkeletonOverlay({ frame, highlight = null, thin = false }: { frame: Tra
   );
 }
 
+/** A frame to open: a video and a time in it (e.g. from a live studio snapshot). */
+export type FrameFocus = { videoId: string; time: number };
+
 /** Pick a library video and a time range: every saved frame of the range, with its keypoints. */
-export function VideoKeypoints() {
+export function VideoKeypoints({ focus = null }: { focus?: FrameFocus | null }) {
+  const navigate = useNavigate();
   const videos = useLoad(() => api<VideoWithTrack[]>("/api/videos"), []);
   const [videoId, setVideoId] = useState("");
   const [start, setStart] = useState(0);
@@ -76,30 +83,45 @@ export function VideoKeypoints() {
   const latestRequest = useRef(0); // answers to older requests are ignored (a slow one must not overwrite a newer range)
   const video = videos.data?.find((candidate) => candidate.id === videoId);
 
-  // the first video with saved keypoints, by default
+  // the first video with saved keypoints, by default (or the focused frame's video)
   useEffect(() => {
-    if (videoId || !videos.data?.length) return;
+    if (focus || videoId || !videos.data?.length) return;
     const first = videos.data.find((candidate) => candidate.keypoint_frames > 0) ?? videos.data[0];
     setVideoId(first.id); // the range keeps what the user may already have typed
   }, [videos.data, videoId]);
 
-  const load = async () => {
-    if (!video) return;
+  /** The saved frames of ``target`` between ``from`` and ``to`` seconds; ``at`` selects the nearest one. */
+  const load = async (target = video, from = start, to = end, at: number | null = null) => {
+    if (!target) return;
     const request = ++latestRequest.current;
     setBusy(true);
     setError(null);
     try {
-      const query = new URLSearchParams({ start: String(start), end: String(end) });
-      const result = await api<{ frames: TrackFrame[] }>(`/api/videos/${video.id}/keypoints?${query}`);
+      const query = new URLSearchParams({ start: String(from), end: String(to) });
+      const result = await api<{ frames: TrackFrame[] }>(`/api/videos/${target.id}/keypoints?${query}`);
       if (request !== latestRequest.current) return;
       setFrames(result.frames);
-      setSelected(0);
+      const nearest = at == null ? 0 : result.frames.reduce((best, frame, index) =>
+        (Math.abs(frame.source_time - at) < Math.abs(result.frames[best].source_time - at) ? index : best), 0);
+      setSelected(nearest);
     } catch (failure) {
       if (request === latestRequest.current) setError(failure instanceof Error ? failure.message : String(failure));
     }
     if (request === latestRequest.current) setBusy(false);
   };
-  useEffect(() => { void load(); }, [videoId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!focus) void load(); }, [videoId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // open the focused frame: its video, a range around it, the nearest saved frame selected
+  useEffect(() => {
+    const target = focus && videos.data?.find((candidate) => candidate.id === focus.videoId);
+    if (!focus || !target) return;
+    const from = Math.max(0, Math.floor(focus.time - FOCUS_MARGIN_S));
+    const to = Math.min(target.duration, Math.ceil(focus.time + FOCUS_MARGIN_S));
+    setVideoId(target.id);
+    setStart(from);
+    setEnd(to);
+    void load(target, from, to, focus.time);
+  }, [focus, videos.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ← / → step through the frames
   useEffect(() => {
@@ -160,6 +182,22 @@ export function VideoKeypoints() {
     await api("/api/keypoint-tracks", json("PUT", { media_key: video.media_key, session_id: current.session_id, frames: [corrected] }));
     setFrames(frames.map((frame, index) => (index === selected ? corrected : frame)));
   };
+  /** The clean frame in a module tab (YOLO, CLIP or the VLM), like a live studio snapshot. */
+  const openIn = async (target: SnapshotTarget) => {
+    if (!video || !current) return;
+    try {
+      const response = await fetch(frameUrl(video.id, current.source_time, editorSide));
+      if (!response.ok) throw new Error(`cannot load the frame (${response.status})`);
+      const file = new File([await response.blob()], `${video.name.replace(/\.[^.]+$/, "")}-${current.source_time.toFixed(2)}s.jpg`, { type: "image/jpeg" });
+      sendSnapshot(target, {
+        file, movement: current.movement, timeSeconds: current.source_time, corrections: [],
+        mediaKey: video.media_key, sourceTime: current.source_time,
+      });
+      navigate(`/${target}`);
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : String(failure));
+    }
+  };
   const detection = current?.keypoints && current.box ? [{ label: "person", confidence: 1, box: current.box, keypoints: current.keypoints, adjusted: current.adjusted }] : [];
   return (
     <div className="stack">
@@ -183,7 +221,7 @@ export function VideoKeypoints() {
           <input type="number" min={0} step={0.5} value={end} onChange={(event) => setEnd(Number(event.target.value))} aria-label="To (s)" style={{ width: 80 }} />
           <span className="small muted">s</span>
           {video && <button className="small ghost" onClick={() => { setStart(0); setEnd(video.duration); }}>Whole video</button>}
-          <button onClick={load} disabled={!video || busy || end <= start}>{busy ? "Loading…" : "Show the frames"}</button>
+          <button onClick={() => load()} disabled={!video || busy || end <= start}>{busy ? "Loading…" : "Show the frames"}</button>
           {frames && frames.length > 0 && <button className="small ghost" onClick={exportCsv}>⬇ CSV of the range</button>}
         </div>
         {video && (
@@ -283,6 +321,12 @@ export function VideoKeypoints() {
                   <SkeletonOverlay frame={current} highlight={hovered ?? keypoint} />
                 </div>
                 {current.adjusted && <p className="small"><span className="adjusted-tag">✎ adjusted</span> keypoints corrected by hand</p>}
+                <div className="row" style={{ gap: 6, marginTop: 8 }}>
+                  <span className="small muted">Open this frame in</span>
+                  {(["yolo", "clip", "vlm"] as SnapshotTarget[]).map((target) => (
+                    <button key={target} className="small ghost" onClick={() => void openIn(target)}>{target.toUpperCase()} →</button>
+                  ))}
+                </div>
               </Card>
               {editing && (
                 <KeypointEditor imageSrc={frameUrl(video.id, current.source_time, editorSide)} keypoints={current.keypoints}

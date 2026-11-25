@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useLoad } from "../hooks";
 import { ErrorBox } from "../components/ui";
 import { SnapshotTarget, sendSnapshot } from "../live/snapshot";
+import { listVideos } from "./videos";
 import { LibrarySnapshot, deleteSnapshot, describeSnapshot, listSnapshots, openSnapshot, updateSnapshotNotes } from "./snapshots";
 
 const TARGETS: { target: SnapshotTarget; label: string; path: string }[] = [
@@ -11,9 +12,11 @@ const TARGETS: { target: SnapshotTarget; label: string; path: string }[] = [
   { target: "vlm", label: "VLM", path: "/vlm" },
 ];
 
-/** The snapshots taken in the live studio: look, annotate, delete, open in a module tab. */
+/** The snapshots taken in the live studio: look, annotate, delete, open in a module tab.
+ * Clicking one taken from a library video opens that frame in Analysis. */
 export function SnapshotsGallery({ filter }: { filter: string }) {
   const snapshots = useLoad(listSnapshots, []);
+  const videos = useLoad(listVideos, []);
   const navigate = useNavigate();
   const [viewing, setViewing] = useState<LibrarySnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -28,6 +31,11 @@ export function SnapshotsGallery({ filter }: { filter: string }) {
     sendSnapshot(target, await openSnapshot(item));
     navigate(path);
   });
+  /** The Analysis page of the snapshot's frame, when it comes from a library video. */
+  const analysisPath = (item: LibrarySnapshot) => {
+    const video = item.media_key && item.source_time != null ? videos.data?.find((candidate) => candidate.media_key === item.media_key) : undefined;
+    return video ? `/analysis?video=${encodeURIComponent(video.id)}&t=${item.source_time!.toFixed(3)}` : null;
+  };
   const editNotes = (item: LibrarySnapshot) => {
     const notes = window.prompt("Notes", item.notes);
     if (notes !== null) void run(async () => { await updateSnapshotNotes(item.id, notes); snapshots.reload(); });
@@ -42,7 +50,8 @@ export function SnapshotsGallery({ filter }: { filter: string }) {
       <div className="video-grid large">
         {shown.map((item) => (
           <div key={item.id} className="video-card snapshot-card">
-            <button className="thumbnail" onClick={() => setViewing(item)} title="View"><img src={item.url} alt="" loading="lazy" /></button>
+            <button className="thumbnail" onClick={() => { const path = analysisPath(item); if (path) navigate(path); else setViewing(item); }}
+              title={analysisPath(item) ? "Open this frame in Analysis" : "View"}><img src={item.url} alt="" loading="lazy" /></button>
             <div className="name">{item.movement ?? "snapshot"}</div>
             <div className="small muted">{describeSnapshot(item) || item.name}</div>
             <div className="small muted">{new Date(item.created * 1000).toLocaleString()} · {item.width}×{item.height}</div>
@@ -52,6 +61,7 @@ export function SnapshotsGallery({ filter }: { filter: string }) {
               {TARGETS.map(({ target, label, path }) => <button key={target} className="small ghost" onClick={() => openIn(item, target, path)} title={`Open in the ${label} tab`}>{label}</button>)}
             </div>
             <div className="card-actions">
+              <button className="small ghost" onClick={() => setViewing(item)} title="View the snapshot">🔍</button>
               <button className="small ghost" onClick={() => editNotes(item)}>Notes</button>
               <a className="btn small ghost" href={item.url} download={item.name} title="Download">⬇</a>
               <button className="small ghost danger-text" onClick={() => remove(item)} title="Delete">🗑</button>

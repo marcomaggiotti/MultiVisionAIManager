@@ -75,9 +75,12 @@ function useLiveSessionState() {
     }
   };
 
+  /** The analysis shown is the last complete one and it is saved (its frames are in the video's keypoints). */
+  const analysisSaved = live.status !== "live" && live.completedRuns > 0 && savedRun === live.completedRuns && !saving;
+
   return {
     live, playback, source, setSource, files, setFiles, overlays, setOverlays, mirror, setMirror,
-    analyse, save, saving, updateFrame,
+    analyse, save, saving, updateFrame, analysisSaved,
   };
 }
 

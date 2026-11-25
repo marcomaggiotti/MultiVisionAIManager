@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api, form, post } from "../api";
 import { useLoad } from "../hooks";
 import { Slider } from "../components/ui";
@@ -8,6 +9,8 @@ import { PlayerActions, Timeline } from "../live/Timeline";
 import { useLiveSession } from "../live/LiveSessionContext";
 import { usePlayerKeyboard } from "../live/usePlayerKeyboard";
 import { Overlay } from "../live/drawing";
+import { createSnapshotFile, describeFrame } from "../live/snapshot";
+import { saveSnapshot } from "../library/snapshots";
 import { SnapshotDialog } from "../live/SnapshotDialog";
 import { FrameAdjuster } from "../live/FrameAdjuster";
 import { VideoCutDialog } from "../live/VideoCutDialog";
@@ -49,8 +52,9 @@ function savedPanels(): string[] {
 export default function LiveStudio() {
   // Kept by the app while other tabs are shown: the video goes on where it was.
   const {
-    live, playback, source, setSource, files, setFiles, overlays, setOverlays, mirror, setMirror, analyse, save, saving, updateFrame,
+    live, playback, source, setSource, files, setFiles, overlays, setOverlays, mirror, setMirror, analyse, save, saving, updateFrame, analysisSaved,
   } = useLiveSession();
+  const navigate = useNavigate();
   const library = useLoad(listVideos, []);
   const vocab = useLoad(() => api<Vocabulary>("/api/ballet/vocabulary"), []).data;
   const [snapshotFrame, setSnapshotFrame] = useState<Recorded | null>(null);
@@ -80,11 +84,24 @@ export default function LiveStudio() {
   const frame = playback.shownFrame;
 
   const { holdCurrentFrame, shownIndex } = playback;
-  const openSnapshot = useCallback(() => {
+  /** 📷: a frame of a saved library video is kept in the snapshot library and opened in
+   * Analysis (Video keypoints, at that frame); a camera frame (or one not saved yet)
+   * opens the snapshot dialog. */
+  const openSnapshot = useCallback(async () => {
     if (!frame) return;
     holdCurrentFrame();
-    setSnapshotFrame(frame);
-  }, [frame, holdCurrentFrame]);
+    const video = library.data?.find((candidate) => candidate.media_key === frame.mediaKey);
+    if (!video || frame.sourceTime == null || !analysisSaved) {
+      setSnapshotFrame(frame);
+      return;
+    }
+    try {
+      await saveSnapshot({ file: await createSnapshotFile(frame, overlays, false), ...describeFrame(frame) });
+    } catch (failure) {
+      live.setError(`The snapshot was not kept in the library: ${failure instanceof Error ? failure.message : String(failure)}`);
+    }
+    navigate(`/analysis?video=${encodeURIComponent(video.id)}&t=${frame.sourceTime.toFixed(3)}`);
+  }, [frame, holdCurrentFrame, library.data, analysisSaved, overlays, live, navigate]);
   const openKeypointAdjustment = useCallback(() => {
     if (!frame?.result.dancer) return;
     holdCurrentFrame();

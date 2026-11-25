@@ -4,6 +4,14 @@ export type Release = { version: string; date: string; title: string; changes: s
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.21.0", date: "2026-11-25", title: "Snapshot → the frame in Analysis",
+    changes: [
+      "Live studio: 📷 Snapshot (or S) on a frame of an analysed library video keeps the snapshot in the library and opens Analysis → Video keypoints at that frame (5 s of video around it), ready to adjust. Camera frames still open the snapshot dialog.",
+      "Analysis: the selected frame can be opened in YOLO, CLIP or the VLM.",
+      "Library → Snapshots: clicking a snapshot taken from a library video opens its frame in Analysis (🔍 shows the picture).",
+    ],
+  },
+  {
     version: "0.20.0", date: "2026-11-25", title: "Live studio: choose a video, it is analysed and saved",
     changes: [
       "No Start button and no “📚 Library video” button: the toolbar lists the library's videos (added in the Library tab); choosing one analyses it whole, frame by frame, with a progress bar.",

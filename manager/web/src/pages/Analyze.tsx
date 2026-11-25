@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api, form, num, pct, post } from "../api";
 import { useAction, useLoad, useObjectUrls } from "../hooks";
 import { Bars, Card, Check, ErrorBox, Field, Files, Json, Page, Slider, Tabs, Thumbs } from "../components/ui";
@@ -19,11 +20,19 @@ type View = "video" | "pictures";
 /** Analysis: the keypoints saved for a video, frame by frame; or a full multi-module
  * analysis of pictures. */
 export default function Analyze() {
+  // /analysis?video=<id>&t=<seconds> opens that frame of the video (a snapshot of the live studio)
+  const [search] = useSearchParams();
+  const focusVideo = search.get("video");
+  const focusTime = Number(search.get("t"));
+  const focus = useMemo(
+    () => (focusVideo && Number.isFinite(focusTime) ? { videoId: focusVideo, time: focusTime } : null),
+    [focusVideo, focusTime],
+  );
   const [view, setView] = useState<View>("video");
   return (
     <Page title="Analysis" subtitle="Video keypoints: every analysed frame of a library video, by time range. Pictures: pose (YOLO) → angles → step ranking (CLIP) → explanation (VLM) → fused result.">
       <Tabs value={view} onChange={setView} tabs={[["video", "Video keypoints"], ["pictures", "Pictures analysis"]]} />
-      {view === "video" ? <VideoKeypoints /> : <PicturesAnalysis />}
+      {view === "video" ? <VideoKeypoints focus={focus} /> : <PicturesAnalysis />}
     </Page>
   );
 }
