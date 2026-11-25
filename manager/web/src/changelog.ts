@@ -4,6 +4,13 @@ export type Release = { version: string; date: string; title: string; changes: s
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.19.0", date: "2026-11-25", title: "Analysis: keypoints table view",
+    changes: [
+      "Analysis → Video keypoints: “☰ Table” shows one line per frame (small picture with its skeleton, time, movement) and the 17 keypoints (0 nose … 16 right ankle) as columns, with x and y in pixels; points not visible are faded.",
+      "Click a line to open that frame below; click a column title to follow that keypoint in the trajectory chart. “▦ Pictures” returns to the thumbnails; the choice is remembered.",
+    ],
+  },
+  {
     version: "0.18.1", date: "2026-11-25", title: "Analysis: keypoints on the large picture",
     changes: [
       "Analysis → Video keypoints: the skeleton of the large picture was stretched over the black side bars (portrait videos) and missed the joints; it is now scaled and centred like the picture, as in the thumbnails.",

@@ -80,7 +80,8 @@ persist are written to the feedback log, with the time, so you can jump back to 
   video at its time in the video (a new analysis replaces the part it covers). *Analysis →
   Video keypoints*: pick a video and a time range; every saved frame appears (thumbnail with
   skeleton, from `/api/videos/{id}/frame?t=`); click one (← / →) for the large frame and its
-  17 keypoints, plus a trajectory chart and CSV of the range. **✎ Adjust keypoints** on the
+  17 keypoints, plus a trajectory chart and CSV of the range. *☰ Table* lists the frames as
+  lines (small picture, time, movement) and keypoints 0–16 as columns (x, y). **✎ Adjust keypoints** on the
   selected frame replaces its keypoints (and keeps the fix as a keypoint adjustment for later analyses). API: `PUT /api/keypoint-tracks`,
   `GET/DELETE /api/videos/{id}/keypoints?start&end`.
 - **Snapshot library**: every snapshot is saved in the manager (the clean frame, with its
