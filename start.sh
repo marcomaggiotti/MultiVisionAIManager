@@ -28,15 +28,19 @@ if [ "$action" = down ]; then
   exit 0
 fi
 
-# YOLO module = https://github.com/marcomaggiotti/detect_image_engine, cloned into modules/yolo.
-if [ ! -f modules/yolo/Dockerfile ]; then
-  echo "Cloning the YOLO module (detect_image_engine) into modules/yolo..."
-  git submodule update --init --recursive modules/yolo
-fi
-if $update; then
-  echo "Updating modules/yolo to the latest commit of its branch..."
-  git submodule update --init --remote modules/yolo
-fi
+# Modules kept in their own repositories (git submodules):
+#   modules/yolo = https://github.com/marcomaggiotti/detect_image_engine
+#   modules/vlm  = https://github.com/marcomaggiotti/vlm_hub_engine
+for module in yolo vlm; do
+  if [ ! -f "modules/$module/Dockerfile" ]; then
+    echo "Cloning the $module module into modules/$module..."
+    git submodule update --init --recursive "modules/$module"
+  fi
+  if $update; then
+    echo "Updating modules/$module to the latest commit of its branch..."
+    git submodule update --init --remote "modules/$module"
+  fi
+done
 
 [ -f .env ] || cp .env.example .env
 # Group that owns the Docker socket, so the manager may launch the modules.

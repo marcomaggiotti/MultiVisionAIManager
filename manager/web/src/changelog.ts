@@ -4,6 +4,13 @@ export type Release = { version: string; date: string; title: string; changes: s
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.18.0", date: "2026-11-25", title: "The VLM module is its own project",
+    changes: [
+      "The VLM module moved, with its history, to github.com/marcomaggiotti/vlm_hub_engine: an independent web service with its own README, Docker Compose, tests and CI.",
+      "modules/vlm is now a git submodule (like YOLO): ./start.sh clones it, ./start.sh --update updates it; nothing changes in the web interface.",
+    ],
+  },
+  {
     version: "0.17.0", date: "2026-11-24", title: "AI workflow builder: a VLM model and a prompt per node",
     changes: [
       "Each “Ask the VLM” node chooses its VLM model: the loaded one, one of the VLM module's catalogue, or any model id. The manager loads it just before the node asks (and keeps it for the next node); the switch appears in History.",
