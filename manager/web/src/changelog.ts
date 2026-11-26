@@ -4,6 +4,12 @@ export type Release = { version: string; date: string; title: string; changes: s
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.26.1", date: "2026-11-26", title: "VLM: remove a chosen frame",
+    changes: [
+      "VLM → Video frames: each chosen frame in the strip next to the question has a ✕ to leave it out (the grid and the count follow).",
+    ],
+  },
+  {
     version: "0.26.0", date: "2026-11-26", title: "VLM: ask about chosen frames of a video",
     changes: [
       "VLM → Video frames (the first tab): choose a library video, its analysed frames appear (time range, every frame or fewer); click one or several (shift-click for a span, up to 16).",
