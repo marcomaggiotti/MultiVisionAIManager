@@ -108,13 +108,15 @@ export type Answer = { name: string; prompt: string; text: string | null; latenc
 // --- what a question is about ---------------------------------------------------------
 export type VlmInput =
   | { kind: "video"; video: LibraryVideo; start: number; end: number; frames: number }
+  | { kind: "frames"; video: LibraryVideo; run: string; indices: number[]; times: number[] } // chosen analysed frames
   | { kind: "pictures"; files: File[] };
 
 /** The multipart body: ``request`` (JSON, with the video part if any) and the pictures. */
 export function inputForm(input: VlmInput | null, request: object): FormData {
   const body = new FormData();
   const video = input?.kind === "video" ? { video_id: input.video.id, start: input.start, end: input.end, frames: input.frames } : null;
-  body.append("request", JSON.stringify({ ...request, video }));
+  const frames = input?.kind === "frames" ? { video_id: input.video.id, indices: input.indices } : null;
+  body.append("request", JSON.stringify({ ...request, video, frames }));
   if (input?.kind === "pictures") input.files.forEach((file) => body.append("images", file));
   return body;
 }
@@ -122,6 +124,7 @@ export function inputForm(input: VlmInput | null, request: object): FormData {
 export function describeInput(input: VlmInput | null): string {
   if (!input) return "no picture";
   if (input.kind === "pictures") return `${input.files.length} picture${input.files.length === 1 ? "" : "s"}`;
+  if (input.kind === "frames") return `${input.indices.length} frame${input.indices.length === 1 ? "" : "s"} of ${input.video.name} (at ${input.times.map((time) => `${time.toFixed(2)} s`).join(", ")})`;
   return `${input.frames} frames of ${input.video.name} (${input.start.toFixed(1)}–${input.end.toFixed(1)} s)`;
 }
 

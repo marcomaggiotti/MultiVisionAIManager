@@ -124,3 +124,55 @@ def test_asking_the_vlm_about_chosen_analysed_frames(make_client, sample_video):
         wrong = {**ask, "frames": {"video_id": added["id"], "indices": [len(frames)]}}
         failed = client.post("/api/vlm/ask", data={"request": json.dumps(wrong)})
         assert failed.status_code == 422 and "analysed frames" in failed.json()["detail"]
+
+
+def test_pipelines_are_saved_edited_and_deleted(make_client):
+    with make_client([]) as client:
+        steps = [{"title": "Name it", "text": "Which step?"}, {"text": "Correct {{last}}", "model": "large-vlm"}]
+        pipeline = {"name": "Coach", "steps": steps}
+        saved = client.post("/api/pipelines", json=pipeline).json()
+        assert saved["steps"][1]["model"] == "large-vlm" and saved["steps"][0]["use_pictures"] is True
+        renamed = client.put(f"/api/pipelines/{saved['id']}", json={**pipeline, "name": "Coach 2"}).json()
+        assert [item["name"] for item in client.get("/api/pipelines").json()] == ["Coach 2"]
+        assert renamed["id"] == saved["id"]
+        assert client.post("/api/pipelines", json={"name": "Empty", "steps": []}).status_code == 422
+        assert client.delete(f"/api/pipelines/{saved['id']}").status_code == 204
+        assert client.get("/api/pipelines").json() == []
+
+
+@needs_ffmpeg
+def test_a_pipeline_runs_on_chosen_frames_with_a_model_per_step(make_client, sample_video):  # noqa: F811
+    from tests.conftest import Scripted
+    from tests.test_agents_and_flows import Modules
+    from tests.test_vlm_tools import edge, node, wait_for
+
+    yolo, vlm = Scripted([FIRST_POSITION_LIKE] * 200), Modules()
+
+    def modules(request):
+        return vlm(request) if request.url.host == "vlm" else yolo(request)
+
+    with make_client(
+        [], handler=modules, modules="yolo=http://yolo:8000,vlm=http://vlm:8000", analyse_videos=True
+    ) as client:
+        with sample_video.open("rb") as file:
+            [added] = client.post("/api/videos", files={"files": ("rehearsal.mp4", file, "video/mp4")}).json()["saved"]
+        assert wait_until_analysed(client, added["id"])["analysis"]["status"] == "done"
+        graph = {  # what the Pipelines tab sends: start → each step → end
+            "nodes": [
+                node("start", "start"),
+                node("step1", "vlm_ask", text="Name the step in {{input}}.", model="", output="step1"),
+                node(
+                    "step2", "vlm_ask", text="Correct: {{last}}", model="large-vlm", use_pictures=False, output="step2"
+                ),
+                node("end", "end", template="{{step1}} | {{step2}}"),
+            ],
+            "edges": [edge("start", "step1"), edge("step1", "step2"), edge("step2", "end")],
+        }
+        request = {"graph": graph, "frames": {"video_id": added["id"], "indices": [45, 0]}}
+        started = client.post("/api/flow-runs", data={"request": json.dumps(request)}).json()
+        assert started["pictures"]["description"] == "2 frames of rehearsal.mp4 (at 0.00 s, 3.00 s)"
+        run = wait_for(client, started["id"], "finished", "failed")
+        assert run["status"] == "finished", run["error"]
+        first = "VLM: Name the step in 2 frames of rehearsal.mp4 (at 0.00 s, 3.00 s)."
+        assert run["result"] == f"{first} | VLM: Correct: {first}"
+        assert vlm.vlm_answered_with == ["small-vlm", "large-vlm"]  # each step its model

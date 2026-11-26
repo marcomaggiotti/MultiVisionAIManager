@@ -6,6 +6,7 @@ import { VideoLibraryPicker } from "../library/VideoLibraryPicker";
 import { SnapshotPickerButton } from "../library/SnapshotPicker";
 import { LibraryVideo, formatDuration } from "../library/videos";
 import { VlmInput } from "./types";
+import { ChosenFramesStrip, FramePicker } from "./FramePicker";
 
 const DEFAULT_FRAMES = 8;
 const MAX_FRAMES = 16;
@@ -14,9 +15,11 @@ export function videoInput(video: LibraryVideo): VlmInput {
   return { kind: "video", video, start: 0, end: video.duration, frames: DEFAULT_FRAMES };
 }
 
-/** What the VLM looks at: a part of a library video (sampled into frames), or pictures. */
+/** What the VLM looks at: a part of a library video (sampled into frames), frames chosen
+ * among a video's analysed frames, or pictures. */
 export function InputChooser({ value, onChange }: { value: VlmInput | null; onChange: (input: VlmInput | null) => void }) {
-  const [kind, setKind] = useState<"video" | "pictures">(value?.kind ?? "video");
+  const [kind, setKind] = useState<"video" | "frames" | "pictures">(value?.kind ?? "video");
+  const chosenFrames = value?.kind === "frames" ? value : null;
   const [picking, setPicking] = useState(false);
   const [preview, setPreview] = useState<{ time: number; image: string }[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -48,6 +51,8 @@ export function InputChooser({ value, onChange }: { value: VlmInput | null; onCh
     <div className="input-chooser">
       <div className="seg" style={{ marginBottom: 8 }}>
         <button className={kind === "video" ? "on" : ""} onClick={() => { setKind("video"); if (value?.kind !== "video") onChange(null); }}>🎞 Library video</button>
+        <button className={kind === "frames" ? "on" : ""} onClick={() => { setKind("frames"); if (value?.kind !== "frames") onChange(null); }}
+          title="Frames chosen among a library video's analysed frames">🖼 Chosen frames</button>
         <button className={kind === "pictures" ? "on" : ""} onClick={() => { setKind("pictures"); if (value?.kind !== "pictures") onChange(null); }}>▦ Pictures</button>
       </div>
       {kind === "video" && (
@@ -76,6 +81,12 @@ export function InputChooser({ value, onChange }: { value: VlmInput | null; onCh
               )}
             </>
           )}
+        </>
+      )}
+      {kind === "frames" && (
+        <>
+          <FramePicker value={chosenFrames} onChange={(frames) => onChange(frames ? { kind: "frames", ...frames } : null)} />
+          <ChosenFramesStrip value={chosenFrames} onChange={(frames) => onChange(frames ? { kind: "frames", ...frames } : null)} />
         </>
       )}
       {kind === "pictures" && (

@@ -19,7 +19,7 @@ from app.flows.catalog import catalog_to_api
 from app.flows.engine import FlowRunner
 from app.flows.graph import FlowGraph
 from app.vlm.documents import DocumentStore
-from app.vlm.inputs import VideoInput, load_pictures
+from app.vlm.inputs import AnalysedFramesInput, VideoInput, load_pictures
 
 router = APIRouter(tags=["ai workflows"])
 
@@ -97,6 +97,7 @@ def check_flow(graph: FlowGraph) -> dict:
 class RunRequest(BaseModel):
     graph: FlowGraph
     video: VideoInput | None = None
+    frames: AnalysedFramesInput | None = None  # frames chosen among a library video's analysed frames
 
 
 class Answer(BaseModel):
@@ -106,14 +107,16 @@ class Answer(BaseModel):
 @router.post("/api/flow-runs", status_code=201)
 @router.post("/api/workflow-runs", status_code=201)
 async def start_run(
-    request: Annotated[str, Form(description="JSON: {graph, video?}")],
+    request: Annotated[str, Form(description="JSON: {graph, video? | frames?}")],
     library: Library,
     runner: Runner,
+    http_request: Request,
     images: list[UploadFile] | None = None,
 ) -> dict:
     """Start running a flow; poll ``GET /api/flow-runs/{id}`` for its progress."""
     run_request = parse_form_json(RunRequest, request)
-    pictures = await load_pictures(library, run_request.video, images)
+    analyses = http_request.app.state.video_analyses
+    pictures = await load_pictures(library, run_request.video, images, run_request.frames, analyses)
     run = runner.start(run_request.graph, pictures)
     return {**run.to_api(), "pictures": pictures_to_api(pictures)}
 

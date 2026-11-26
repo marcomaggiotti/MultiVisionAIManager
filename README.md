@@ -486,8 +486,17 @@ sequence, with the prompt, to the VLM module.
   player's position) and the number of frames, preview the frames, and describe it with
   the default ballet prompt or a saved one. `{{input}}` in a prompt becomes "8 frames of
   class.mp4 from 2.0 s to 6.0 s".
+- **Pipelines**: prompts asked one after the other, saved by name. Each step is a saved
+  prompt or its own text, asked to its own **VLM model**, with or without the pictures
+  (a text-only step can summarise the earlier answers); each answer is `{{step1}}`,
+  `{{step2}}`… and a step can use the previous one `{{last}}`. Add, reorder (↑ ↓),
+  duplicate and remove steps; run it on a sampled video, **chosen frames** (as in *Video
+  frames*, kept between the tabs) or pictures, and follow every step's prompt and answer,
+  then the report; *Open as a workflow* adds decisions and questions. API:
+  `GET/POST/PUT/DELETE /api/pipelines`; a run is a straight workflow
+  (`POST /api/workflow-runs` with `frames: {video_id, indices}`).
 - **Prompts**: a library of saved prompts (text, system prompt, length, temperature,
-  notes). Tick several to **compare** them side by side on the same frames (answers,
+  notes): a searchable list with ✎ edit, ⧉ duplicate and 🗑 delete on each. Tick several to **compare** them side by side on the same frames (answers,
   time, tokens), or **run them as a chain**, in the order ticked: each prompt can use the
   previous answer `{{last}}`, or any earlier one `{{step1}}`, `{{step2}}`… A chain opens
   in the workflow editor to add decisions and questions.

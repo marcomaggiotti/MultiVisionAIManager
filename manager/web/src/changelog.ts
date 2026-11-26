@@ -4,6 +4,14 @@ export type Release = { version: string; date: string; title: string; changes: s
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.28.0", date: "2026-11-26", title: "VLM: pipelines of prompts, clearer prompt list",
+    changes: [
+      "VLM → Pipelines: steps asked one after the other, saved by name. Each step: a saved prompt or its own text, its VLM model, with or without the pictures; {{last}} and {{step1}}, {{step2}}… pass the answers on. Add, reorder, duplicate, remove steps; run on a video, chosen frames or pictures, step by step.",
+      "VLM → Prompts: the library is a searchable list with the text of each prompt and ✎ edit, ⧉ duplicate, 🗑 delete buttons.",
+      "Frames chosen in Video frames stay chosen in the other VLM tabs (“🖼 Chosen frames” input).",
+    ],
+  },
+  {
     version: "0.27.0", date: "2026-11-26", title: "Compare library videos: reference and performances",
     changes: [
       "Compare → Library videos: tick the reference (the instruction video to follow, by default the oldest) and one or more performances among the analysed videos.",

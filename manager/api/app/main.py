@@ -97,6 +97,7 @@ def create_app(
         app.state.recorder = UsageRecorder(app.state.history)
         app.state.prompts = DocumentStore(app.state.store.database_path, "prompt")
         app.state.workflows = DocumentStore(app.state.store.database_path, "workflow")
+        app.state.pipelines = DocumentStore(app.state.store.database_path, "pipeline")
         app.state.vlm = VlmClient(app.state.registry, http_client, settings.proxy_timeout, app.state.recorder)
         app.state.flows = DocumentStore(app.state.store.database_path, "flow")
         app.state.services = Services(
