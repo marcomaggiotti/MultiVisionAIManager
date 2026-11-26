@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pathlib
 import time
 
 import pytest
@@ -48,8 +49,13 @@ def test_an_added_video_is_analysed_saved_and_kept_up_to_date(make_client, sampl
         assert frames[0]["source_time"] == 0.0 and frames[0]["dancer"]["keypoints"]
         assert frames[0]["evaluation"]["pose"] and analysis["counts"]
         assert video["keypoint_frames"] == len(frames) and video["analysis"]["frames"] == len(frames)
-        picture = client.get(f"/api/videos/{added['id']}/analysis/frames/3.jpg")
+        run = analysis["run"]
+        picture = client.get(f"/api/videos/{added['id']}/analysis/frames/{run}/3.jpg")
         assert picture.headers["content-type"] == "image/jpeg" and picture.content[:2] == b"\xff\xd8"
+        # the pictures are in the picture database, not in files
+        pictures = client.app.state.pictures
+        assert pictures.name == "database" and pictures.get(f"frames/{added['id']}/{run}/3.jpg") == picture.content
+        assert not list(pathlib.Path(client.app.state.settings.data_dir).glob("analyses/*"))
         assert any(session["id"] == f"analysis-{added['id']}" for session in client.get("/api/live/sessions").json())
 
         # a keypoint correction replaces the analysed frame and its track; removing it restores the model's
@@ -72,6 +78,14 @@ def test_an_added_video_is_analysed_saved_and_kept_up_to_date(make_client, sampl
         again = client.post(f"/api/videos/{added['id']}/analysis", json={"fps": 5}).json()
         assert again["analysis"]["status"] == "queued" and again["analysis"]["settings"]["fps"] == 5
         assert wait_until_analysed(client, added["id"])["analysis"]["frames"] in range(29, 32)
+        new_run = client.get(f"/api/videos/{added['id']}/analysis").json()["run"]
+        assert (
+            new_run != run and client.get(f"/api/videos/{added['id']}/analysis/frames/{run}/3.jpg").status_code == 404
+        )
+        assert {key.split("/")[2] for key in pictures.keys(f"frames/{added['id']}/")} == {new_run}  # old pictures gone
 
         assert client.delete(f"/api/videos/{added['id']}").status_code == 204
-        assert client.get(f"/api/videos/{added['id']}/analysis/frames/0.jpg").status_code == 404
+        assert client.get(f"/api/videos/{added['id']}/analysis/frames/{new_run}/0.jpg").status_code == 404
+        assert (
+            list(pictures.keys(f"frames/{added['id']}/")) == [] and pictures.get(f"analyses/{added['id']}.json") is None
+        )

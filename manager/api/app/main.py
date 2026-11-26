@@ -48,6 +48,7 @@ from app.history.store import UsageHistory
 from app.live import LiveSession, process_frame
 from app.media.keypoint_tracks import KeypointTrackStore
 from app.media.library import VideoLibrary
+from app.media.picture_store import create_picture_store
 from app.media.snapshots import SnapshotLibrary
 from app.media.video_analysis import VideoAnalyses
 from app.modules import ModuleRegistry, load_modules
@@ -107,11 +108,16 @@ def create_app(
             yolo_url = await running_yolo_url(app.state.registry)
             return await process_frame(http_client, yolo_url, session, jpeg, confidence, source_time, video_clock=True)
 
+        app.state.pictures = create_picture_store(
+            settings.picture_store, data_dir, settings.picture_database,
+            settings.azure_storage_connection_string, settings.azure_storage_container,
+        )  # fmt: skip
         app.state.video_analyses = VideoAnalyses(
             data_dir, app.state.store.database_path, app.state.library, app.state.store,
-            app.state.keypoint_tracks, analyse_frame,
+            app.state.keypoint_tracks, analyse_frame, app.state.pictures,
         )  # fmt: skip
         background = [asyncio.create_task(app.state.registry.stop_idle_modules_forever())]
+        app.state.video_analyses.import_legacy_folders()
         if settings.analyse_videos:
             app.state.video_analyses.resume()
             background.append(asyncio.create_task(app.state.video_analyses.run_forever()))

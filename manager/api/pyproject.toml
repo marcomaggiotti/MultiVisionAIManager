@@ -1,6 +1,6 @@
 [project]
 name = "multivision-manager"
-version = "0.24.0"
+version = "0.25.0"
 description = "Hub of the MultiVision AI Manager: module registry, proxy and pipelines"
 requires-python = ">=3.10"
 dependencies = [
@@ -19,6 +19,8 @@ dependencies = [
 dev = ["pytest>=8", "ruff>=0.5"]
 # cloud chat models for agents (set MANAGER_AGENT_MODELS and the provider's API key)
 providers = ["langchain-anthropic>=1.0", "langchain-openai>=1.0"]
+# the picture store in Azure Blob Storage (MANAGER_PICTURE_STORE=azure)
+azure = ["azure-storage-blob>=12.19"]
 
 [tool.setuptools.packages.find]
 include = ["app*"]

@@ -4,6 +4,14 @@ export type Release = { version: string; date: string; title: string; changes: s
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.25.0", date: "2026-11-26", title: "Frame pictures in a database, ready for Azure",
+    changes: [
+      "The pictures of the analysed frames (and the analyses) are stored in a database (SQLite, pictures.sqlite3 in the manager's data) instead of files; analyses saved as files before are moved in at start.",
+      "The same picture store has an Azure Blob Storage version: when Azure is connected, “python -m app.media.picture_store migrate --to azure” copies everything, then MANAGER_PICTURE_STORE=azure switches to it.",
+      "Each analysis keeps its pictures under its own run, so a new analysis replaces the old one at once and the browser can cache the pictures.",
+    ],
+  },
+  {
     version: "0.24.0", date: "2026-11-26", title: "Exact frame in the studio, same keypoints as Analysis",
     changes: [
       "Live studio player: the time (m:ss.cc, every frame has its own) and the frame number can be typed: Enter goes to that exact frame (“37.8”, “0:37,80” or “1:02.35” work).",

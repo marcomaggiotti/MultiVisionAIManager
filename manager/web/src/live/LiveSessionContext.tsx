@@ -55,7 +55,7 @@ function useLiveSessionState() {
     const analysis = await fetchAnalysis(video.id);
     analysisLoadedAt.current = Date.now();
     const recorded: Recorded[] = analysis.frames.map((frame) => ({
-      result: frame, imageUrl: analysedFrameUrl(video.id, frame.index), mediaKey: video.media_key, sourceTime: frame.source_time,
+      result: frame, imageUrl: analysedFrameUrl(video.id, analysis.run, frame.index), mediaKey: video.media_key, sourceTime: frame.source_time,
     }));
     forgetFrameImages(recorded);
     const adjusted = analysis.frames.filter((frame) => frame.adjusted).map((frame) => frame.source_time);
