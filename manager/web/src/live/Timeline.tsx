@@ -3,8 +3,9 @@ import { Recorded, Vocabulary, stepColor } from "./types";
 
 type TrackKind = "poses" | "motion" | "legs" | "knees";
 
-function Track({ kind, frames, index, onSeek, vocab, version }: {
+function Track({ kind, frames, index, onSeek, vocab, version, noted }: {
   kind: TrackKind; frames: Recorded[]; index: number; onSeek: (i: number) => void; vocab: Vocabulary | null; version: number;
+  noted?: Set<number>; // frames with a note: marked on the poses track
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
@@ -37,6 +38,9 @@ function Track({ kind, frames, index, onSeek, vocab, version }: {
       // keypoints adjusted by hand: a small mark under the track
       ctx.fillStyle = "#ffb547";
       frames.forEach((f, i) => { if (f.result.adjusted) ctx.fillRect(x(i) - 1.5, H * 0.8, 3, H * 0.16); });
+      // notes: a small flag above the track
+      ctx.fillStyle = "#f5f7ff";
+      noted?.forEach((i) => { ctx.beginPath(); ctx.moveTo(x(i) - 4, 0); ctx.lineTo(x(i) + 4, 0); ctx.lineTo(x(i), 7); ctx.fill(); });
     } else if (kind === "motion") {
       const values = frames.map((f) => f.result.motion ?? 0);
       const top = Math.max(0.02, ...values);
@@ -63,7 +67,7 @@ function Track({ kind, frames, index, onSeek, vocab, version }: {
       ctx.strokeStyle = "rgba(255,255,255,.85)"; ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.moveTo(x(index), 0); ctx.lineTo(x(index), H); ctx.stroke();
     }
-  }, [frames, index, kind, vocab, version]);
+  }, [frames, index, kind, vocab, version, noted]);
   /** The frame under the mouse (the tracks span the recording, 8 px margin each side). */
   const frameAt = (element: HTMLCanvasElement, clientX: number) => {
     const r = element.getBoundingClientRect();
@@ -148,13 +152,15 @@ export type PlayerActions = {
   onFollow: () => void;
   onSnapshot: () => void;
   onAdjustKeypoints: () => void;
+  onNote?: () => void; // write a note on the shown frame (library videos)
 };
 
-export function Timeline({ frames, index, vocab, version, player, actions }: {
+export function Timeline({ frames, index, vocab, version, player, actions, noted }: {
   frames: Recorded[]; index: number; vocab: Vocabulary | null; version: number; player: PlayerState; actions: PlayerActions;
+  noted?: Set<number>;
 }) {
   const rows: [TrackKind, string, string?][] = [
-    ["poses", "Poses", "orange: adjusted"],
+    ["poses", "Poses", "orange: adjusted · ▾ note"],
     ["motion", "Motion energy"],
     ["legs", "Leg elevation", "L cyan · R green"],
     ["knees", "Knee angles", "L violet · R orange"],
@@ -164,7 +170,7 @@ export function Timeline({ frames, index, vocab, version, player, actions }: {
       {rows.map(([kind, label, hint]) => (
         <div className="track" key={kind}>
           <span title={hint}>{label}{hint && <div className="small" style={{ fontSize: 10 }}>{hint}</div>}</span>
-          <Track kind={kind} frames={frames} index={index} onSeek={actions.onSeek} vocab={vocab} version={version} />
+          <Track kind={kind} frames={frames} index={index} onSeek={actions.onSeek} vocab={vocab} version={version} noted={kind === "poses" ? noted : undefined} />
         </div>
       ))}
       <PlayerControls frames={frames} index={index} player={player} actions={actions} />
@@ -221,6 +227,7 @@ function PlayerControls({ frames, index, player, actions }: { frames: Recorded[]
       <button className="small" title="Snapshot of the shown frame (S): a saved library video opens at this frame in Analysis" disabled={!hasFrames} onClick={actions.onSnapshot}>📷 Snapshot</button>
       <button className="small ghost" title="Correct the keypoints of the shown frame (E)" disabled={!frames[index]?.result.dancer}
         onClick={actions.onAdjustKeypoints}>✎ Adjust keypoints</button>
+      {actions.onNote && <button className="small ghost" title="Write a note on the shown frame (N)" disabled={!hasFrames} onClick={actions.onNote}>📝 Note</button>}
       <button className={`small ${player.following ? "" : "ghost"}`} onClick={actions.onFollow} title="Follow the newest frame">
         {player.following ? "● following" : "Go live"}
       </button>

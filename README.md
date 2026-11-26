@@ -54,6 +54,24 @@ persist are written to the feedback log, with the time, so you can jump back to 
 - **AI coach** sends the shown frame through the full pipeline (CLIP + VLM) for a
   teacher-style comment. Each session (counts, events, comments, angle series) is saved
   in the manager by itself.
+- **Notes on frames** (library videos, e.g. a full class recorded with the teacher's
+  explanations): 📝 *Note* (or **N**) writes a note on the shown frame; the *Notes* panel
+  shows the frame's note and every note in time order (click to go there), the timeline
+  marks them (▾), and *Analysis → Video keypoints* shows and edits them too.
+  API: `GET/PUT /api/videos/{id}/notes` (an empty text removes a note).
+- **Sound** (library videos): *🎵 Sound* extracts the video's audio (FLAC) and cleans it with
+  the **audio module**, [audio_clean_service](https://github.com/marcomaggiotti/audio_clean_service)
+  (`modules/audio`, git submodule): it measures the recording (noise floor, signal / noise,
+  loudness, clipping, clicks, mains hum, rumble, consonants), its agent (rule-based, or
+  Claude with `ANTHROPIC_API_KEY`) tries plans on a preview and keeps the best for the goal
+  (speech, listening, archive), and ffmpeg filters the whole file (de-clip, de-click,
+  de-hum, high-pass, noise reduction, loudness). Or choose the filters yourself (*🎚
+  Filters*). Pauses are **never shortened** (when the agent's plan shortens them it runs
+  again without that step), so *🔊 Original* / *✨ Cleaned* play **in time with the frames**.
+  The report shows the plan, the agent's reasons, the measurements before / after and the
+  spectrograms. The audio is kept in the picture store (`audio/<video id>/`). API:
+  `GET /api/videos/{id}/audio`, `POST …/audio/extract`, `POST …/audio/clean`,
+  `GET …/audio/original.flac | cleaned.flac`, `GET …/audio/spectrogram`.
 - **Timeline**: press on a track and slide to move through the video (the panels follow).
   The time (m:ss.cc) and the frame number can be typed to go to an exact frame; coming back to
   the studio reloads the video's analysis, so keypoints corrected in Analysis show here too
@@ -655,6 +673,7 @@ manager/web/                React app: pages/LiveStudio + live/, Compare + compa
                             VlmStudio + vlm/ (workflow editor), Admin + admin/ (AI workflow builder,
                             agents), Analyze, Dashboard (modules), studios
 modules/clip/               CLIP module = visual-semantic-engine (git submodule)
+modules/audio/              audio cleaning module = audio_clean_service (git submodule)
 modules/vlm/                VLM module = vlm_hub_engine (git submodule)
 modules/yolo/               YOLO module = detect_image_engine (git submodule)
 ```

@@ -10,3 +10,7 @@
 	path = modules/clip
 	url = https://github.com/marcomaggiotti/visual-semantic-engine
 	branch = claude/serene-dirac-srols1
+[submodule "modules/audio"]
+	path = modules/audio
+	url = https://github.com/marcomaggiotti/audio_clean_service
+	branch = main

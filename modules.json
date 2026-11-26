@@ -5,7 +5,10 @@
       "title": "YOLO detection & pose",
       "url": "http://yolo:8000",
       "repository": "https://github.com/marcomaggiotti/detect_image_engine",
-      "launcher": { "type": "docker", "service": "yolo" },
+      "launcher": {
+        "type": "docker",
+        "service": "yolo"
+      },
       "autostart": true,
       "idle_stop_minutes": 0,
       "start_timeout": 300
@@ -15,7 +18,10 @@
       "title": "CLIP image-text embeddings",
       "url": "http://clip:8000",
       "repository": "https://github.com/marcomaggiotti/visual-semantic-engine",
-      "launcher": { "type": "docker", "service": "clip" },
+      "launcher": {
+        "type": "docker",
+        "service": "clip"
+      },
       "autostart": true,
       "idle_stop_minutes": 0,
       "start_timeout": 600
@@ -25,10 +31,26 @@
       "title": "Vision-language models",
       "url": "http://vlm:8000",
       "repository": "https://github.com/marcomaggiotti/vlm_hub_engine",
-      "launcher": { "type": "docker", "service": "vlm" },
+      "launcher": {
+        "type": "docker",
+        "service": "vlm"
+      },
       "autostart": true,
       "idle_stop_minutes": 30,
       "start_timeout": 900
+    },
+    {
+      "name": "audio",
+      "title": "Audio cleaning",
+      "url": "http://audio:10000",
+      "repository": "https://github.com/marcomaggiotti/audio_clean_service",
+      "launcher": {
+        "type": "docker",
+        "service": "audio"
+      },
+      "autostart": false,
+      "idle_stop_minutes": 30,
+      "start_timeout": 120
     }
   ]
 }

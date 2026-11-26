@@ -7,12 +7,12 @@ import { Playback } from "./usePlayback";
 const ARROW_STEP_SECONDS = 1;
 const SHIFT_ARROW_STEP_SECONDS = 3;
 
-/** Space play/pause · ←/→ 1 s (Shift: 3 s) · , . one frame · Home/End · S snapshot · E adjust keypoints.
+/** Space play/pause · ←/→ 1 s (Shift: 3 s) · , . one frame · Home/End · S snapshot · E adjust keypoints · N note.
  * Ignored while typing in a field, inside a dialog, or when ``enabled`` is false. */
 export function usePlayerKeyboard(
   frames: Recorded[],
   playback: Playback,
-  shortcuts: { snapshot: () => void; adjustKeypoints: () => void },
+  shortcuts: { snapshot: () => void; adjustKeypoints: () => void; note?: () => void },
   enabled: boolean,
 ) {
   const { shownIndex, shownFrame, togglePlay, seek } = playback;
@@ -36,6 +36,7 @@ export function usePlayerKeyboard(
         S: shortcuts.snapshot,
         e: shortcuts.adjustKeypoints,
         E: shortcuts.adjustKeypoints,
+        ...(shortcuts.note ? { n: shortcuts.note, N: shortcuts.note } : {}),
       };
       const handler = handlers[event.key];
       if (handler) {
