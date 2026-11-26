@@ -55,6 +55,9 @@ persist are written to the feedback log, with the time, so you can jump back to 
   teacher-style comment. Each session (counts, events, comments, angle series) is saved
   in the manager by itself.
 - **Timeline**: press on a track and slide to move through the video (the panels follow).
+  The time (m:ss.cc) and the frame number can be typed to go to an exact frame; coming back to
+  the studio reloads the video's analysis, so keypoints corrected in Analysis show here too
+  (Analysis' *▶ Live studio* opens the same frame).
 - **Player** under the timeline: play / pause, first / last frame, one frame back or
   forward, −3/−2/−1 s and +1/+2/+3 s, replay speed ×0.25 to ×2. While the camera or a video
   runs, Pause freezes the capture (a video file pauses too) so the moment can be inspected.

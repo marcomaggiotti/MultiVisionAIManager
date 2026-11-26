@@ -4,6 +4,14 @@ export type Release = { version: string; date: string; title: string; changes: s
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.24.0", date: "2026-11-26", title: "Exact frame in the studio, same keypoints as Analysis",
+    changes: [
+      "Live studio player: the time (m:ss.cc, every frame has its own) and the frame number can be typed: Enter goes to that exact frame (“37.8”, “0:37,80” or “1:02.35” work).",
+      "Keypoints corrected in the Analysis tab (or the YOLO tab) are shown in the live studio: coming back to it reloads the video's analysis at the same frame.",
+      "Analysis → Video keypoints: “▶ Live studio” opens the selected frame in the studio, paused, with the same keypoints and every panel.",
+    ],
+  },
+  {
     version: "0.23.3", date: "2026-11-25", title: "Timeline: slide with the mouse",
     changes: [
       "Live studio timeline: press on any track (poses, motion energy, leg elevation, knee angles) and slide: the playhead follows the mouse and the panels and keypoints show each frame passed (it keeps following outside the track until you release).",

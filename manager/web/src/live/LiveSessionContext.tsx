@@ -16,6 +16,8 @@ import { Overlay } from "./drawing";
 import { Source, useLive } from "./useLive";
 import { usePlayback } from "./usePlayback";
 
+const RECENT_LOAD_MS = 3000;
+
 function useLiveSessionState() {
   const live = useLive();
   const playback = usePlayback({
@@ -43,8 +45,41 @@ function useLiveSessionState() {
     void live.start(chosenSource, chosenFiles);
   };
 
-  /** Show a library video: its analysis (made by the manager) is loaded and played. */
-  const openLibraryVideo = async (video: LibraryVideo) => {
+  /** When the shown analysis was loaded, and the time shown now (read by refreshLibraryVideo). */
+  const analysisLoadedAt = useRef(0);
+  const shownTime = useRef<number | null>(null);
+  shownTime.current = playback.shownFrame?.sourceTime ?? null;
+
+  /** The stored analysis of ``video`` in the session (its frames, movements, comments). */
+  const loadAnalysis = async (video: LibraryVideo) => {
+    const analysis = await fetchAnalysis(video.id);
+    analysisLoadedAt.current = Date.now();
+    const recorded: Recorded[] = analysis.frames.map((frame) => ({
+      result: frame, imageUrl: analysedFrameUrl(video.id, frame.index), mediaKey: video.media_key, sourceTime: frame.source_time,
+    }));
+    forgetFrameImages(recorded);
+    const adjusted = analysis.frames.filter((frame) => frame.adjusted).map((frame) => frame.source_time);
+    live.load(recorded, analysis.events, analysis.comments, `analysis-${video.id}`, adjusted);
+    void preloadFrameImages(recorded);
+    return recorded;
+  };
+
+  /** A time to show (seconds in the video), asked before the frames are loaded: the
+   * nearest frame is shown, paused, once they are. */
+  const pendingSeekTime = useRef<number | null>(null);
+  useEffect(() => {
+    const wanted = pendingSeekTime.current;
+    const frames = live.frames;
+    if (wanted === null || !frames.length) return;
+    pendingSeekTime.current = null;
+    const nearest = frames.reduce((best, frame, index) =>
+      (Math.abs((frame.sourceTime ?? 0) - wanted) < Math.abs((frames[best].sourceTime ?? 0) - wanted) ? index : best), 0);
+    playback.seek(nearest);
+  }, [live.version]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Show a library video: its analysis (made by the manager) is loaded and played, or
+   * shown paused at ``atTime`` seconds (the nearest analysed frame). */
+  const openLibraryVideo = async (video: LibraryVideo, atTime: number | null = null) => {
     if (video.analysis?.status !== "done") {
       live.setError(`${video.name} is not analysed yet: wait for its analysis in the Library tab.`);
       return;
@@ -52,22 +87,30 @@ function useLiveSessionState() {
     setOpening(true);
     try {
       await live.stop();
-      const analysis = await fetchAnalysis(video.id);
-      const recorded: Recorded[] = analysis.frames.map((frame) => ({
-        result: frame, imageUrl: analysedFrameUrl(video.id, frame.index), mediaKey: video.media_key, sourceTime: frame.source_time,
-      }));
-      forgetFrameImages(recorded);
-      const adjusted = analysis.frames.filter((frame) => frame.adjusted).map((frame) => frame.source_time);
-      live.load(recorded, analysis.events, analysis.comments, `analysis-${video.id}`, adjusted);
+      pendingSeekTime.current = atTime;
+      await loadAnalysis(video);
       setSource("video");
       setFiles([]);
       setLibraryVideo(video);
-      playback.replayFromStart();
-      void preloadFrameImages(recorded);
+      if (atTime === null) playback.replayFromStart();
     } catch (failure) {
       live.setError(`Cannot open the analysis of ${video.name}: ${failure instanceof Error ? failure.message : String(failure)}`);
     }
     setOpening(false);
+  };
+
+  /** Load the shown video's analysis again, at the same frame: keypoints corrected elsewhere
+   * (the Analysis tab, the YOLO tab) appear here too. */
+  const refreshLibraryVideo = async () => {
+    // just loaded (e.g. "▶ Live studio" in Analysis opened it at a frame): nothing new to show
+    if (!libraryVideo || source !== "video" || opening || Date.now() - analysisLoadedAt.current < RECENT_LOAD_MS) return;
+    // stay at the frame shown (unless a frame to show is already asked for)
+    pendingSeekTime.current ??= shownTime.current;
+    try {
+      await loadAnalysis(libraryVideo);
+    } catch {
+      pendingSeekTime.current = null; // deleted or analysed again right now: the shown frames stay
+    }
   };
 
   // new pictures: analyse them whole, straight away (library videos are analysed by the manager)
@@ -127,7 +170,7 @@ function useLiveSessionState() {
 
   return {
     live, playback, source, setSource, files, setFiles, overlays, setOverlays, mirror, setMirror,
-    analyse, save, saving, updateFrame, analysisSaved, libraryVideo, openLibraryVideo, closeLibraryVideo, opening,
+    analyse, save, saving, updateFrame, analysisSaved, libraryVideo, openLibraryVideo, refreshLibraryVideo, closeLibraryVideo, opening,
   };
 }
 

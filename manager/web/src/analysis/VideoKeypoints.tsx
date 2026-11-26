@@ -11,6 +11,7 @@ import { KeypointsPanel } from "../components/KeypointsPanel";
 import { download } from "../live/keypointData";
 import { LibraryVideo, formatDuration } from "../library/videos";
 import { SnapshotTarget, sendSnapshot } from "../live/snapshot";
+import { useLiveSession } from "../live/LiveSessionContext";
 
 const VISIBLE = 0.5;
 const FOCUS_MARGIN_S = 5; // a focused frame opens with this much video around it
@@ -67,6 +68,7 @@ export type FrameFocus = { videoId: string; time: number };
 /** Pick a library video and a time range: every saved frame of the range, with its keypoints. */
 export function VideoKeypoints({ focus = null }: { focus?: FrameFocus | null }) {
   const navigate = useNavigate();
+  const { openLibraryVideo } = useLiveSession();
   const videos = useLoad(() => api<VideoWithTrack[]>("/api/videos"), []);
   const [videoId, setVideoId] = useState("");
   const [start, setStart] = useState(0);
@@ -322,6 +324,9 @@ export function VideoKeypoints({ focus = null }: { focus?: FrameFocus | null }) 
                 </div>
                 {current.adjusted && <p className="small"><span className="adjusted-tag">✎ adjusted</span> keypoints corrected by hand</p>}
                 <div className="row" style={{ gap: 6, marginTop: 8 }}>
+                  <button className="small" disabled={video.analysis?.status !== "done"}
+                    title="The live studio at this exact frame: the same keypoints, with every panel"
+                    onClick={() => void openLibraryVideo(video, current.source_time).then(() => navigate("/"))}>▶ Live studio</button>
                   <span className="small muted">Open this frame in</span>
                   {(["yolo", "clip", "vlm"] as SnapshotTarget[]).map((target) => (
                     <button key={target} className="small ghost" onClick={() => void openIn(target)}>{target.toUpperCase()} →</button>
