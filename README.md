@@ -120,6 +120,21 @@ persist are written to the feedback log, with the time, so you can jump back to 
 
 ## Compare: dance along with a reference video
 
+**Library videos** (first tab): tick the **reference** (the instruction video to follow,
+by default the oldest) and one or more **performances** among the analysed library
+videos. The **newest performance** is shown, frame by frame, with the skeletons of every
+other video over it: the reference thick in gold, earlier performances thinner, the
+dancer's own in green. Each skeleton is aligned on the shown dancer's torso (moved and
+scaled), so different framings compare; an **offset** per video lines up the starts. Each
+performance gets a match score with the reference at every frame (joint angles, left /
+right mirroring detected), its average, and a score chart (click to go there).
+**🎬 Make the comparison video** draws all this on every frame and encodes an MP4, saved in
+the Library (`comparison-<performance>-vs-<reference>.mp4`).
+Code: `manager/api/app/media/video_comparison.py`; API: `POST /api/video-comparisons/preview`,
+`POST /api/video-comparisons/render` → `GET /api/video-comparisons/jobs/{id}`.
+
+**Live** (second tab):
+
 The **Compare** tab puts the student (left) next to a reference video (right: the
 teacher, or any dancer to copy) and compares the two in real time. The student is either
 the **camera** (dance along) or a **video** of the student (compare two recordings).

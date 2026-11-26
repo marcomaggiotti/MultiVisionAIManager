@@ -11,6 +11,7 @@ from app.flows.engine import InvalidFlowError, RunNotFoundError
 from app.imaging import InvalidImageError
 from app.media.ffmpeg import FfmpegMissingError, VideoError
 from app.media.snapshots import InvalidSnapshotError
+from app.media.video_comparison import ComparisonError
 from app.modules import LaunchError
 from app.storage import RecordNotFoundError
 from app.vlm.client import VlmError
@@ -27,6 +28,7 @@ STATUS_BY_ERROR: dict[type[Exception], int] = {
     CapabilityError: 502,
     ModelUnavailableError: 422,
     InvalidInputError: 422,
+    ComparisonError: 422,
     InvalidFlowError: 422,
     RunNotFoundError: 404,
 }

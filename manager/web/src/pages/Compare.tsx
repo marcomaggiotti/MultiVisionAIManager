@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useObjectUrls } from "../hooks";
-import { Bars, ErrorBox, Slider } from "../components/ui";
+import { Bars, ErrorBox, Slider, Tabs } from "../components/ui";
+import { LibraryComparison } from "../compare/LibraryComparison";
 import { useLiveSession } from "../live/LiveSessionContext";
 import { drawSkeletonOverVideo, mirrorPartNames } from "../compare/drawing";
 import { ScoreGauge, ScoreHistory } from "../compare/ScoreViews";
@@ -43,10 +44,31 @@ function VideoPicker({ choice, placeholder, disabled, onChoose }: { choice: Vide
   );
 }
 
+type CompareMode = "library" | "live";
+const MODE_KEY = "compare-mode";
+
+/** Compare: library videos already analysed (a reference and performances, one video with
+ * every skeleton), or live (the camera or a video against a reference). */
+export default function Compare() {
+  const [mode, setMode] = useState<CompareMode>(() => {
+    try { return localStorage.getItem(MODE_KEY) === "live" ? "live" : "library"; } catch { return "library"; }
+  });
+  const choose = (next: CompareMode) => {
+    setMode(next);
+    try { localStorage.setItem(MODE_KEY, next); } catch { /* not remembered */ }
+  };
+  return (
+    <div className="stack">
+      <Tabs value={mode} onChange={choose} tabs={[["library", "🎞 Library videos"], ["live", "◉ Live (camera or video)"]]} />
+      {mode === "library" ? <LibraryComparison /> : <LiveCompare />}
+    </div>
+  );
+}
+
 /** Compare a student with a reference video: the student is the camera (dance along) or
  * a video of the student (compare two recordings). Both dancers are tracked at once and
  * every joint angle is compared (green / yellow / red), with a live match score. */
-export default function Compare() {
+function LiveCompare() {
   const { files: liveFiles, source: liveSource } = useLiveSession();
   const referenceVideo = useRef<HTMLVideoElement>(null);
   const studentVideo = useRef<HTMLVideoElement>(null);

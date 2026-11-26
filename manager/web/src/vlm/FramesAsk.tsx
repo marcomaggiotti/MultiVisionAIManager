@@ -147,10 +147,12 @@ export function FramesAsk({ prompts }: { prompts: Prompt[] }) {
           <p className="small muted"><code>{"{{input}}"}</code> becomes “3 frames of class.mp4 (at 2.00 s, 2.40 s, 3.10 s)”.</p>
           <Slider label="Max answer length (tokens)" value={draft.max_new_tokens} min={16} max={1024} step={16} onChange={(value) => setDraft({ ...draft, max_new_tokens: value })} />
           {ordered.length > 0 && video && analysis && (
-            <div className="frame-strip">
+            <div className="frame-strip chosen-strip">
               {ordered.map((index) => (
                 <figure key={index}>
                   <img src={analysedFrameUrl(video.id, analysis.run, index)} alt="" />
+                  <button className="remove-frame" onClick={() => setChosen(chosen.filter((item) => item !== index))}
+                    title="Do not send this frame" aria-label={`Remove the frame at ${byIndex.get(index)?.source_time.toFixed(2)} s`}>✕</button>
                   <figcaption>{byIndex.get(index)?.source_time.toFixed(2)} s</figcaption>
                 </figure>
               ))}
