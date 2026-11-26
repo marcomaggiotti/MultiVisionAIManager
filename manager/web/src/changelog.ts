@@ -4,6 +4,24 @@ export type Release = { version: string; date: string; title: string; changes: s
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.29.0", date: "2026-11-26", title: "VLM agent systems; Compare: library videos only, camera asks again",
+    changes: [
+      "VLM → Agents: sequential agent systems drawn as a graph (agents as ellipses, tools as boxes; the active agent turns green while it runs). Each agent: instruction, model (local VLM and which of its models, or a cloud model), tools, sees the frames or not; it reads the earlier answers ({{describer_agent}}…).",
+      "Templates: VLM auditor (describer → critic with tools → reviser) and Coach team (measure → explain → plan). Saved, run on a video, chosen frames or pictures.",
+      "An agent without tools answers directly; an agent can use its own VLM model.",
+      "Compare → Live: the videos are chosen from the library only (no file of this device).",
+      "Camera refused: the message says why (refused, blocked for the site, not a secure page, missing, in use) and “↻ Ask again” asks once more; the live studio uses the same explanations.",
+    ],
+  },
+  {
+    version: "0.28.0", date: "2026-11-26", title: "VLM: pipelines of prompts, clearer prompt list",
+    changes: [
+      "VLM → Pipelines: steps asked one after the other, saved by name. Each step: a saved prompt or its own text, its VLM model, with or without the pictures; {{last}} and {{step1}}, {{step2}}… pass the answers on. Add, reorder, duplicate, remove steps; run on a video, chosen frames or pictures, step by step.",
+      "VLM → Prompts: the library is a searchable list with the text of each prompt and ✎ edit, ⧉ duplicate, 🗑 delete buttons.",
+      "Frames chosen in Video frames stay chosen in the other VLM tabs (“🖼 Chosen frames” input).",
+    ],
+  },
+  {
     version: "0.27.0", date: "2026-11-26", title: "Compare library videos: reference and performances",
     changes: [
       "Compare → Library videos: tick the reference (the instruction video to follow, by default the oldest) and one or more performances among the analysed videos.",

@@ -15,6 +15,7 @@ from app.agents.tools import TOOL_NAMES
 from app.flows import nodes
 
 FRAME_CHOICES = ["all", "middle", "first", "last"]
+NO_TOOL_HELP = "No tool: the model answers directly"
 ALIASES = {"prompt": "vlm_ask", "ask": "ask_user"}  # the VLM tab's names
 
 
@@ -114,7 +115,8 @@ NODE_SPECS = [
         [
             FieldSpec("goal", "Goal", "textarea", "Study the dancer and give the three most useful corrections."),
             FieldSpec("model", "Model", "model", "vlm", "The local VLM, or a configured cloud model"),
-            FieldSpec("tools", "Tools", "multiselect", list(TOOL_NAMES), "", list(TOOL_NAMES)),
+            FieldSpec("vlm_model", "VLM model", "vlm_model", "", "Local VLM only: which one (empty = the loaded one)"),
+            FieldSpec("tools", "Tools", "multiselect", list(TOOL_NAMES), NO_TOOL_HELP, list(TOOL_NAMES)),
             FieldSpec("max_steps", "Max tool calls", "number", 5, "", None, 1, 12, 1),
             FieldSpec("show_pictures", "The model sees the frames", "boolean", False, "Local VLM only"),
             OUTPUT,

@@ -1,5 +1,6 @@
 """VLM tools: saved prompts, asking about a video (one prompt or several side by side),
-and the VLM tab's saved workflows (they run as flows: see ``app/api/flows.py``)."""
+saved pipelines of prompts, and the VLM tab's saved workflows (pipelines and workflows run
+as flows: see ``app/api/flows.py``)."""
 
 from __future__ import annotations
 
@@ -106,6 +107,62 @@ async def ask(
             answer["error"] = str(error)
         answers.append(answer)
     return {"pictures": pictures_to_api(pictures), "answers": answers}
+
+
+# --- pipelines: prompts one after the other --------------------------------------------
+MAX_PIPELINE_STEPS = 12
+
+
+class PipelineStep(BaseModel):
+    """One step: a saved prompt (``prompt_id``) or its own text, asked to a VLM model."""
+
+    title: str = Field("", max_length=120)
+    prompt_id: str | None = None
+    text: str = Field("", max_length=8000)
+    system: str = Field("", max_length=4000)
+    max_new_tokens: int = Field(256, ge=1, le=2048)
+    temperature: float = Field(0.0, ge=0, le=2)
+    model: str = Field("", max_length=300, description="Empty: the model loaded in the VLM module")
+    use_pictures: bool = True
+
+
+class PipelineDocument(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    description: str = Field("", max_length=4000)
+    steps: list[PipelineStep] = Field(min_length=1, max_length=MAX_PIPELINE_STEPS)
+
+
+def get_pipelines(request: Request) -> DocumentStore:
+    return request.app.state.pipelines
+
+
+Pipelines = Annotated[DocumentStore, Depends(get_pipelines)]
+
+
+@router.get("/api/pipelines")
+def list_pipelines(pipelines: Pipelines) -> list[dict]:
+    return pipelines.list()
+
+
+@router.get("/api/pipelines/{pipeline_id}")
+def get_pipeline(pipeline_id: str, pipelines: Pipelines) -> dict:
+    return pipelines.get(pipeline_id)
+
+
+@router.post("/api/pipelines", status_code=201)
+def create_pipeline(pipeline: PipelineDocument, pipelines: Pipelines) -> dict:
+    return pipelines.save(pipeline.model_dump())
+
+
+@router.put("/api/pipelines/{pipeline_id}")
+def update_pipeline(pipeline_id: str, pipeline: PipelineDocument, pipelines: Pipelines) -> dict:
+    return pipelines.save(pipeline.model_dump(), pipeline_id)
+
+
+@router.delete("/api/pipelines/{pipeline_id}", status_code=204)
+def delete_pipeline(pipeline_id: str, pipelines: Pipelines) -> Response:
+    pipelines.delete(pipeline_id)
+    return Response(status_code=204)
 
 
 # --- workflows ----------------------------------------------------------------------

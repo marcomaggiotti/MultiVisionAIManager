@@ -49,6 +49,7 @@ class VlmChatModel(BaseChatModel):
     pictures: list[bytes] = []
     show_pictures: bool = False
     max_new_tokens: int = 384
+    model_id: str | None = None  # a VLM model to load first (None: the loaded one)
 
     @property
     def _llm_type(self) -> str:
@@ -75,7 +76,10 @@ class VlmChatModel(BaseChatModel):
         system, prompt = self._as_text(messages)
         pictures = self.pictures if self.show_pictures else []
         answer = await self.client.ask(
-            prompt, pictures, AskOptions(system=system, max_new_tokens=self.max_new_tokens), source="Agent"
+            prompt,
+            pictures,
+            AskOptions(system=system, max_new_tokens=self.max_new_tokens, model=self.model_id),
+            source="Agent",
         )
         text = answer.text
         for marker in stop or []:  # the module has no stop sequences: cut afterwards
@@ -127,13 +131,14 @@ def describe_model(model_id: str) -> ModelChoice:
 
 
 def create_chat_model(
-    model_id: str, vlm: VlmClient, pictures: list[bytes], show_pictures: bool = False
+    model_id: str, vlm: VlmClient, pictures: list[bytes], show_pictures: bool = False, vlm_model: str | None = None
 ) -> BaseChatModel:
+    """``vlm_model``: for the local VLM, which of its models (loaded first; None: the loaded one)."""
     choice = describe_model(model_id)
     if not choice.available:
         raise ModelUnavailableError(f"model {model_id!r} is not available: {choice.reason}")
     if model_id == LOCAL_MODEL:
-        return VlmChatModel(client=vlm, pictures=pictures, show_pictures=show_pictures)
+        return VlmChatModel(client=vlm, pictures=pictures, show_pictures=show_pictures, model_id=vlm_model or None)
     provider, _, name = model_id.partition(":")
     package, class_name, _ = PROVIDERS[provider]
     model_class = getattr(importlib.import_module(package), class_name)

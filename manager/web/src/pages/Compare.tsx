@@ -2,18 +2,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useObjectUrls } from "../hooks";
 import { Bars, ErrorBox, Slider, Tabs } from "../components/ui";
 import { LibraryComparison } from "../compare/LibraryComparison";
-import { useLiveSession } from "../live/LiveSessionContext";
 import { drawSkeletonOverVideo, mirrorPartNames } from "../compare/drawing";
 import { ScoreGauge, ScoreHistory } from "../compare/ScoreViews";
 import { StudentSource, useComparison } from "../compare/useComparison";
 import { MATCH_COLOR, MatchStatus, MirrorMode, PART_LABEL, scoreStatus } from "../compare/types";
-import { mediaKeyOf } from "../live/types";
 import { VideoLibraryPicker } from "../library/VideoLibraryPicker";
 import { LibraryVideo, useVideoSentTo } from "../library/videos";
 
 /** A video to compare: a file chosen in the browser, or a library video (streamed). */
 type VideoChoice = { name: string; mediaKey: string; file: File | null; url: string | null };
-const fromFile = (file: File): VideoChoice => ({ name: file.name, mediaKey: mediaKeyOf(file), file, url: null });
 const fromLibrary = (video: LibraryVideo): VideoChoice => ({ name: video.name, mediaKey: video.media_key, file: null, url: video.url });
 
 const PLAYBACK_RATES = [0.25, 0.5, 1, 1.5, 1.75];
@@ -28,17 +25,14 @@ const clock = (seconds: number) => {
   return `${minutes}:${(seconds - minutes * 60).toFixed(1).padStart(4, "0")}`;
 };
 
-/** A video chooser: a file of this device, or (📚) a video of the library. */
+/** A video chooser: a video of the library (videos are added in the Library tab). */
 function VideoPicker({ choice, placeholder, disabled, onChoose }: { choice: VideoChoice | null; placeholder: string; disabled: boolean; onChoose: (choice: VideoChoice) => void }) {
-  const input = useRef<HTMLInputElement>(null);
   const [picking, setPicking] = useState(false);
   return (
     <>
-      <input ref={input} type="file" accept="video/*" hidden onChange={(event) => { const chosen = event.target.files?.[0]; if (chosen) onChoose(fromFile(chosen)); }} />
-      <button className="small ghost video-picker" disabled={disabled} onClick={() => input.current?.click()} title={choice?.name ?? "A video file of this device"}>
-        {choice ? choice.name : placeholder}
+      <button className="small ghost video-picker" disabled={disabled} onClick={() => setPicking(true)} title={choice?.name ?? "A video of the library (add videos in the Library tab)"}>
+        📚 {choice ? choice.name : placeholder}
       </button>
-      <button className="small ghost" disabled={disabled} onClick={() => setPicking(true)} title="A video of the library">📚</button>
       {picking && <VideoLibraryPicker onPick={(video) => onChoose(fromLibrary(video))} onClose={() => setPicking(false)} />}
     </>
   );
@@ -69,7 +63,6 @@ export default function Compare() {
  * a video of the student (compare two recordings). Both dancers are tracked at once and
  * every joint angle is compared (green / yellow / red), with a live match score. */
 function LiveCompare() {
-  const { files: liveFiles, source: liveSource } = useLiveSession();
   const referenceVideo = useRef<HTMLVideoElement>(null);
   const studentVideo = useRef<HTMLVideoElement>(null);
   const referenceOverlay = useRef<HTMLCanvasElement>(null);
@@ -96,7 +89,6 @@ function LiveCompare() {
   const comparing = status === "running" || status === "paused";
   const pose = result?.comparison;
   const parts = pose?.parts ?? {};
-  const liveVideo = liveSource === "video" ? liveFiles[0] : undefined;
   const studentReady = studentSource === "camera" || !!studentFile;
 
   // Skeletons over both videos, in their match colours (redrawn on each answer and resize).
@@ -154,11 +146,6 @@ function LiveCompare() {
         <span className="divider" />
         <b>Reference</b>
         <VideoPicker choice={referenceFile} placeholder="Choose a video…" disabled={active} onChoose={(file) => { setReferenceFile(file); comparison.setError(null); }} />
-        {liveVideo && liveVideo !== referenceFile?.file && (
-          <button className="small ghost" disabled={active} onClick={() => setReferenceFile(fromFile(liveVideo))} title="The video chosen in the live studio">
-            Use {liveVideo.name}
-          </button>
-        )}
         {studentSource === "video" && (
           <>
             <span className="divider" />
@@ -174,6 +161,12 @@ function LiveCompare() {
           : <button className="success" disabled={!referenceFile || !studentReady} onClick={start}>● Start comparing</button>}
       </div>
       <ErrorBox error={comparison.error} />
+      {comparison.cameraProblem && comparison.cameraProblem !== "insecure" && !comparison.cameraOn && (
+        <div className="row" style={{ gap: 8, margin: "-4px 0 8px" }}>
+          <button className="small" onClick={comparison.startCamera}>↻ Ask again</button>
+          {comparison.cameraProblem === "blocked" && <span className="small muted">After allowing the camera in the site settings, “Ask again” (or reload the page).</span>}
+        </div>
+      )}
 
       <div className="compare-main">
         <div className="col">

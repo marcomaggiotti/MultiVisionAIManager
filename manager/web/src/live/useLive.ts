@@ -1,3 +1,4 @@
+import { openCamera } from "./camera";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Comment, FrameResult, PoseEvent, Recorded, mediaKeyOf } from "./types";
 
@@ -218,7 +219,7 @@ export function useLive() {
 
   const openSource = async (source: Source, files?: File[]): Promise<CaptureSource> => {
     if (source === "camera") {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+      const stream = await openCamera(); // explains a refusal (◉ Camera asks again)
       const video = document.createElement("video");
       video.srcObject = stream;
       video.muted = true;

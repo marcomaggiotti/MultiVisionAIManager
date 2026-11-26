@@ -1,3 +1,4 @@
+import { CameraError, CameraProblem, openCamera } from "../live/camera";
 import { RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { ComparisonResult, ComparisonSettings, ComparisonStatistics, DEFAULT_COMPARISON_SETTINGS } from "./types";
 
@@ -43,6 +44,8 @@ export type StudentSource = "camera" | "video";
 export function useComparison(referenceVideo: RefObject<HTMLVideoElement>, studentVideo: RefObject<HTMLVideoElement>) {
   const [status, setStatus] = useState<ComparisonStatus>("idle");
   const [error, setError] = useState<string | null>(null);
+  /** Why the camera could not be opened (the page offers to ask again). */
+  const [cameraProblem, setCameraProblem] = useState<CameraProblem | null>(null);
   const [countdown, setCountdown] = useState(0);
   const [result, setResult] = useState<ComparisonResult | null>(null);
   const [summary, setSummary] = useState<ComparisonStatistics | null>(null);
@@ -67,15 +70,17 @@ export function useComparison(referenceVideo: RefObject<HTMLVideoElement>, stude
 
   const startCamera = useCallback(async () => {
     setError(null);
+    setCameraProblem(null);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+      const stream = await openCamera();
       cameraStream.current = stream;
       const video = studentVideo.current!;
       video.srcObject = stream;
       await video.play();
       setCameraOn(true);
     } catch (failure) {
-      setError(`Camera: ${failure instanceof Error ? failure.message : String(failure)}`);
+      setError(failure instanceof Error ? failure.message : String(failure));
+      setCameraProblem(failure instanceof CameraError ? failure.problem : "other");
     }
   }, [studentVideo]);
 
@@ -291,7 +296,7 @@ export function useComparison(referenceVideo: RefObject<HTMLVideoElement>, stude
   }, []);
 
   return {
-    status, error, setError, countdown, result, summary, fps, cameraOn, scoreHistory: scoreHistory.current,
+    status, error, setError, cameraProblem, countdown, result, summary, fps, cameraOn, scoreHistory: scoreHistory.current,
     startCamera, stopCamera, configure, settings: settings.current, start, pause, resume, restart, stop,
     seek, playbackRate, setPlaybackRate, setStudentOffset,
   };

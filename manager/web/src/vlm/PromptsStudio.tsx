@@ -18,6 +18,7 @@ export function PromptsStudio({ input, onInput, prompts, onPromptsChange, onOpen
   onOpenWorkflow: (graph: WorkflowGraph, name: string) => void;
 }) {
   const [editing, setEditing] = useState<Prompt | null>(null);
+  const [search, setSearch] = useState("");
   const [chosen, setChosen] = useState<string[]>([]); // ids, in the order they were ticked
   const [comparison, setComparison] = useState<{ pictures: PicturesShown; answers: Answer[] } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -38,13 +39,14 @@ export function PromptsStudio({ input, onInput, prompts, onPromptsChange, onOpen
     setEditing(saved);
     onPromptsChange();
   });
-  const remove = () => run(async () => {
-    if (!editing?.id || !window.confirm(`Delete the prompt "${editing.name}"?`)) return;
-    await deletePrompt(editing.id);
-    setChosen((current) => current.filter((id) => id !== editing.id));
-    setEditing(null);
+  const remove = (prompt: Prompt | null = editing) => run(async () => {
+    if (!prompt?.id || !window.confirm(`Delete the prompt "${prompt.name}"? Pipelines and workflows using it will need another one.`)) return;
+    await deletePrompt(prompt.id);
+    setChosen((current) => current.filter((id) => id !== prompt.id));
+    if (editing?.id === prompt.id) setEditing(null);
     onPromptsChange();
   });
+  const shown = prompts.filter((prompt) => `${prompt.name} ${prompt.text} ${prompt.notes}`.toLowerCase().includes(search.toLowerCase()));
   const compare = () => run(async () => {
     setComparison(null);
     chain.clear();
@@ -55,16 +57,24 @@ export function PromptsStudio({ input, onInput, prompts, onPromptsChange, onOpen
   return (
     <div className="grid side">
       <div className="stack">
-        <Card title="Prompt library" actions={<button className="small" onClick={() => setEditing({ ...NEW_PROMPT })}>＋ New</button>}>
-          {!prompts.length && <p className="small muted">No prompt yet: create one, or save one from “Describe a video”.</p>}
-          {prompts.map((prompt) => {
+        <Card title={`Prompt library (${prompts.length})`} actions={<button className="small" onClick={() => setEditing({ ...NEW_PROMPT })}>＋ New prompt</button>}>
+          {prompts.length > 4 && <input type="search" placeholder="Search names, texts, notes…" value={search} onChange={(event) => setSearch(event.target.value)} style={{ marginBottom: 6 }} />}
+          {!prompts.length && <p className="small muted">No prompt yet: create one (＋ New prompt), or save one from “Describe a video”.</p>}
+          {shown.map((prompt) => {
             const order = chosen.indexOf(prompt.id!);
             return (
-              <div key={prompt.id} className={`prompt-row ${editing?.id === prompt.id ? "on" : ""}`}>
+              <div key={prompt.id} className={`prompt-item ${editing?.id === prompt.id ? "on" : ""}`}>
                 <input type="checkbox" checked={order >= 0} onChange={() => toggle(prompt.id!)} aria-label={`Choose ${prompt.name}`}
-                  disabled={order < 0 && chosen.length >= MAX_COMPARED} />
-                {order >= 0 && <span className="order-badge" title="Order in the chain">{order + 1}</span>}
-                <button className="link" onClick={() => setEditing({ ...prompt })}>{prompt.name}</button>
+                  disabled={order < 0 && chosen.length >= MAX_COMPARED} title="Choose it to compare or chain" />
+                <div className="prompt-item-text" onClick={() => setEditing({ ...prompt })} title="Edit">
+                  <b>{order >= 0 && <span className="order-badge" title="Order in the chain">{order + 1}</span>} {prompt.name}</b>
+                  <span className="small muted">{prompt.text}</span>
+                </div>
+                <span className="prompt-item-actions">
+                  <button className="small ghost" onClick={() => setEditing({ ...prompt })} title="Edit">✎</button>
+                  <button className="small ghost" onClick={() => setEditing({ ...prompt, id: undefined, name: `${prompt.name} (copy)` })} title="Duplicate">⧉</button>
+                  <button className="small ghost danger-text" onClick={() => remove(prompt)} title="Delete">🗑</button>
+                </span>
               </div>
             );
           })}
@@ -83,7 +93,7 @@ export function PromptsStudio({ input, onInput, prompts, onPromptsChange, onOpen
             <div className="row" style={{ gap: 8 }}>
               <button onClick={save} disabled={busy || !editing.name.trim() || !editing.text.trim()}>Save</button>
               {editing.id && <button className="ghost" onClick={() => setEditing({ ...editing, id: undefined, name: `${editing.name} (copy)` })}>Duplicate</button>}
-              {editing.id && <button className="ghost danger-text" onClick={remove}>Delete</button>}
+              {editing.id && <button className="ghost danger-text" onClick={() => remove()}>Delete</button>}
               <span style={{ flex: 1 }} />
               <button className="ghost" onClick={() => setEditing(null)}>Close</button>
             </div>

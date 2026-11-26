@@ -265,3 +265,72 @@ def test_each_vlm_node_can_use_its_own_model_and_prompt(make_client):
         assert modules.vlm_loads == ["large-vlm"]  # loaded once, kept for the next node
         loads = client.get("/api/history", params={"q": "/v1/model"}).json()["items"]
         assert [(entry["method"], entry["source"]) for entry in loads] == [("PUT", "Workflow")]
+
+
+AUDITOR = {
+    "name": "VLM auditor",
+    "agents": [
+        {"name": "describer_agent", "instruction": "Describe the dance in {{input}}.", "vlm_model": "large-vlm"},
+        {"name": "critic_agent", "instruction": "Check: {{describer_agent}}", "tools": ["evaluate_ballet_pose"],
+         "show_pictures": False},
+        {"name": "reviser_agent", "instruction": "Fix {{describer_agent}} with {{critic_agent}}",
+         "show_pictures": False},
+    ],
+}  # fmt: skip
+
+
+def test_agent_systems_are_validated_and_saved(make_client):
+    with make_client([], handler=Modules(), modules=MODULES) as client:
+        saved = client.post("/api/agent-systems", json=AUDITOR).json()
+        assert [agent["name"] for agent in saved["agents"]] == ["describer_agent", "critic_agent", "reviser_agent"]
+        assert saved["agents"][0]["tools"] == [] and saved["kind"] == "sequential"
+        twice = {**AUDITOR, "agents": [AUDITOR["agents"][0], AUDITOR["agents"][0]]}
+        assert "own name" in client.post("/api/agent-systems", json=twice).text
+        bad_name = {**AUDITOR, "agents": [{**AUDITOR["agents"][0], "name": "Critic Agent"}]}
+        assert client.post("/api/agent-systems", json=bad_name).status_code == 422
+        bad_tool = {**AUDITOR, "agents": [{**AUDITOR["agents"][1], "tools": ["google_search"]}]}
+        assert "unknown tools: google_search" in client.post("/api/agent-systems", json=bad_tool).text
+        client.put(f"/api/agent-systems/{saved['id']}", json={**AUDITOR, "name": "Auditor 2"})
+        assert [item["name"] for item in client.get("/api/agent-systems").json()] == ["Auditor 2"]
+        assert client.delete(f"/api/agent-systems/{saved['id']}").status_code == 204
+
+
+def test_a_sequential_agent_system_runs_its_agents_in_order(make_client):
+    modules = Modules()
+    with make_client([], handler=modules, modules=MODULES) as client:
+        agents = AUDITOR["agents"]
+        graph = {  # what the VLM tab sends: one agent node per agent, in order
+            "nodes": [node("start", "start")]
+            + [
+                node(
+                    agent["name"],
+                    "agent",
+                    goal=agent["instruction"],
+                    tools=agent.get("tools", []),
+                    vlm_model=agent.get("vlm_model", ""),
+                    show_pictures=agent.get("show_pictures", True),
+                    output=agent["name"],
+                )
+                for agent in agents
+            ]  # fmt: skip
+            + [node("end", "end", template="{{reviser_agent}}")],
+            "edges": [
+                edge("start", "describer_agent"),
+                edge("describer_agent", "critic_agent"),
+                edge("critic_agent", "reviser_agent"),
+                edge("reviser_agent", "end"),
+            ],  # fmt: skip
+        }
+        pictures = [("images", (f"{index}.jpg", picture(), "image/jpeg")) for index in range(2)]
+        started = client.post("/api/flow-runs", data={"request": json.dumps({"graph": graph})}, files=pictures)
+        run = wait_for(client, started.json()["id"], "finished", "failed")
+        assert run["status"] == "finished", run["error"]
+        describer, critic, reviser = run["steps"][1:4]
+        assert describer["details"] == [{"kind": "answer", "text": "answered directly (no tool)"}]
+        assert any(
+            detail["kind"] == "tool" and "evaluate_ballet_pose" in json.dumps(detail) for detail in critic["details"]
+        )
+        assert run["variables"]["critic_agent"] == "An arabesque; keep the supporting knee straight."
+        assert run["result"] == run["variables"]["reviser_agent"]
+        assert run["variables"]["describer_agent"] in run["result"]  # the reviser read the describer's answer
+        assert modules.vlm_loads == ["large-vlm"]  # the describer's own VLM model, then kept
