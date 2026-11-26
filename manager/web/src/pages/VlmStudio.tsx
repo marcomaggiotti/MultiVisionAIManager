@@ -9,6 +9,7 @@ import { SnapshotNotice } from "../components/SnapshotNotice";
 import { Snapshot, useIncomingSnapshot } from "../live/snapshot";
 import { SnapshotPickerButton } from "../library/SnapshotPicker";
 import { useVideoSentTo } from "../library/videos";
+import { FramesAsk } from "../vlm/FramesAsk";
 import { DescribeVideo } from "../vlm/DescribeVideo";
 import { videoInput } from "../vlm/InputChooser";
 import { PromptsStudio } from "../vlm/PromptsStudio";
@@ -16,13 +17,13 @@ import { WorkflowStudio } from "../vlm/WorkflowStudio";
 import { VlmInput, Workflow, listPrompts } from "../vlm/types";
 
 const V = (p: string) => mod("vlm", p);
-type Tab = "video" | "prompts" | "workflow" | "models" | "chat" | "decoding" | "inspect" | "datasets" | "tuning" | "evaluation";
+type Tab = "frames" | "video" | "prompts" | "workflow" | "models" | "chat" | "decoding" | "inspect" | "datasets" | "tuning" | "evaluation";
 type Params = Record<string, number | boolean>;
 
 export default function VlmStudio() {
   // a video sent from the library opens "Describe a video"
   const sentVideo = useVideoSentTo("vlm");
-  const [tab, setTab] = useState<Tab>(sentVideo ? "video" : "chat");
+  const [tab, setTab] = useState<Tab>(sentVideo ? "video" : "frames");
   const presets = useLoad(() => api(V("/v1/presets")), []);
   const prompts = useLoad(listPrompts, []);
   // the same video (part) for "Describe", "Prompts" and "Workflow"
@@ -30,7 +31,8 @@ export default function VlmStudio() {
   const [incomingWorkflow, setIncomingWorkflow] = useState<Workflow | null>(null);
   return (
     <Page title="VLM · vision-language models" subtitle="Transformer language models, tokenization, attention, decoding, instruction tuning, image encoders, cross-attention vs projected tokens, multimodal alignment, evaluation.">
-      <Tabs value={tab} onChange={setTab} tabs={[["video", "Describe a video"], ["prompts", "Prompts"], ["workflow", "Workflow"], ["models", "Models"], ["chat", "Ask"], ["decoding", "Decoding comparison"], ["inspect", "Tokens & attention"], ["datasets", "Instruction data"], ["tuning", "Instruction tuning"], ["evaluation", "Evaluation"]]} />
+      <Tabs value={tab} onChange={setTab} tabs={[["frames", "Video frames"], ["video", "Describe a video"], ["prompts", "Prompts"], ["workflow", "Workflow"], ["models", "Models"], ["chat", "Ask"], ["decoding", "Decoding comparison"], ["inspect", "Tokens & attention"], ["datasets", "Instruction data"], ["tuning", "Instruction tuning"], ["evaluation", "Evaluation"]]} />
+      {tab === "frames" && <FramesAsk prompts={prompts.data ?? []} />}
       {tab === "video" && <DescribeVideo input={input} onInput={setInput} prompts={prompts.data ?? []} onPromptsChange={prompts.reload} />}
       {tab === "prompts" && (
         <PromptsStudio input={input} onInput={setInput} prompts={prompts.data ?? []} onPromptsChange={prompts.reload}

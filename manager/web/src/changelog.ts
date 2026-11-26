@@ -4,6 +4,14 @@ export type Release = { version: string; date: string; title: string; changes: s
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.26.0", date: "2026-11-26", title: "VLM: ask about chosen frames of a video",
+    changes: [
+      "VLM → Video frames (the first tab): choose a library video, its analysed frames appear (time range, every frame or fewer); click one or several (shift-click for a span, up to 16).",
+      "Choose the VLM model (loaded one, catalogue or any model id: loaded first) and a prompt (saved or written), then ask: the frames go to the VLM in time order and the answer shows with them.",
+      "The model choice is the same as in the AI workflow builder; the call is in History.",
+    ],
+  },
+  {
     version: "0.25.0", date: "2026-11-26", title: "Frame pictures in a database, ready for Azure",
     changes: [
       "The pictures of the analysed frames (and the analyses) are stored in a database (SQLite, pictures.sqlite3 in the manager's data) instead of files; analyses saved as files before are moved in at start.",

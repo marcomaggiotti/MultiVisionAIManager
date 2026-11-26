@@ -3,6 +3,7 @@ and the VLM tab's saved workflows (they run as flows: see ``app/api/flows.py``).
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Form, Request, Response, UploadFile
@@ -13,7 +14,7 @@ from app.api.forms import parse_form_json, pictures_to_api
 from app.flows.graph import FlowGraph
 from app.vlm.client import AskOptions, VlmClient, VlmError
 from app.vlm.documents import DocumentStore
-from app.vlm.inputs import VideoInput, load_pictures
+from app.vlm.inputs import AnalysedFramesInput, VideoInput, load_pictures
 from app.vlm.templating import render
 
 router = APIRouter(tags=["vlm tools"])
@@ -74,26 +75,32 @@ def delete_prompt(prompt_id: str, prompts: Prompts) -> Response:
 # --- asking: describe a video, compare prompts ----------------------------------------
 class AskRequest(BaseModel):
     video: VideoInput | None = None  # else the uploaded pictures (or none)
+    frames: AnalysedFramesInput | None = None  # frames chosen among a video's analysed frames
     prompts: list[PromptDocument] = Field(min_length=1, max_length=MAX_COMPARED_PROMPTS)
+    model: str | None = Field(None, max_length=300, description="VLM model to load first; default: the loaded one")
 
 
 @router.post("/api/vlm/ask")
 async def ask(
-    request: Annotated[str, Form(description="JSON: {video?, prompts: [{name, text, system, ...}]}")],
+    request: Annotated[str, Form(description="JSON: {video? | frames?, prompts: [{name, text, ...}], model?}")],
     library: Library,
     vlm: Vlm,
+    http_request: Request,
     images: list[UploadFile] | None = None,
 ) -> dict:
-    """Each prompt about the same pictures (a video's frames): one prompt describes the
-    video, several are compared side by side. A failing prompt does not stop the others."""
+    """Each prompt about the same pictures (a video's frames, chosen analysed frames, or
+    uploaded pictures): one prompt describes them, several are compared side by side.
+    A failing prompt does not stop the others."""
     ask_request = parse_form_json(AskRequest, request)
-    pictures = await load_pictures(library, ask_request.video, images)
+    analyses = http_request.app.state.video_analyses
+    pictures = await load_pictures(library, ask_request.video, images, ask_request.frames, analyses)
     answers = []
     for prompt in ask_request.prompts:
         text = render(prompt.text, {"input": pictures.description})
         answer: dict = {"name": prompt.name, "prompt": text, "text": None, "latency_ms": None, "new_tokens": None}
         try:
-            reply = await vlm.ask(text, pictures.jpegs, prompt.options())
+            options = replace(prompt.options(), model=(ask_request.model or "").strip() or None)
+            reply = await vlm.ask(text, pictures.jpegs, options)
             answer.update(text=reply.text, latency_ms=reply.latency_ms, new_tokens=reply.new_tokens, error=None)
         except VlmError as error:
             answer["error"] = str(error)

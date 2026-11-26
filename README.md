@@ -455,6 +455,14 @@ manager. It is cloned automatically into `modules/vlm` (git submodule, branch
 
 #### Describe a video, prompts, workflows (VLM tab, run by the manager)
 
+- **Video frames**: choose a library video (analysed in the Library) and its analysed
+  frames appear (a time range, every frame or fewer); click one or several (shift-click:
+  a span, at most 16), choose the **VLM model** (the loaded one, the module's catalogue or
+  any model id: the manager loads it first) and a prompt, and ask. The manager reads the
+  chosen pictures from the picture store and sends them in time order; `{{input}}` becomes
+  “3 frames of class.mp4 (at 2.00 s, 2.40 s, 3.10 s)”. API: `POST /api/vlm/ask` with
+  `{"frames": {"video_id", "indices"}, "model", "prompts"}`.
+
 The VLM looks at pictures, so a video is **sampled**: the manager takes 1 to 16 frames
 spread evenly over the chosen part of a library video (ffmpeg) and sends them as a
 sequence, with the prompt, to the VLM module.

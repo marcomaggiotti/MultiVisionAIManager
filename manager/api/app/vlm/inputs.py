@@ -1,8 +1,10 @@
-"""What a question is about: frames sampled from (a part of) a library video, or pictures."""
+"""What a question is about: frames sampled from (a part of) a library video, frames
+chosen among a video's analysed frames, or pictures."""
 
 from __future__ import annotations
 
 import io
+import json
 from dataclasses import dataclass, field
 
 from fastapi import UploadFile
@@ -25,6 +27,13 @@ class VideoInput(BaseModel):
     start: float = Field(0, ge=0)
     end: float | None = Field(None, gt=0, description="Default: the end of the video")
     frames: int = Field(8, ge=1, le=MAX_PICTURES, description="Pictures sampled evenly over the part")
+
+
+class AnalysedFramesInput(BaseModel):
+    """Frames chosen among a library video's analysed frames (by their index in the analysis)."""
+
+    video_id: str
+    indices: list[int] = Field(min_length=1, max_length=MAX_PICTURES)
 
 
 @dataclass
@@ -67,8 +76,42 @@ async def pictures_from_uploads(uploads: list[UploadFile]) -> Pictures:
     )
 
 
-async def load_pictures(library: VideoLibrary, video: VideoInput | None, uploads: list[UploadFile] | None) -> Pictures:
-    """The video's frames if a video is given, else the uploaded pictures (maybe none)."""
+def pictures_from_analysis(library: VideoLibrary, analyses, request: AnalysedFramesInput) -> Pictures:
+    """The chosen analysed frames, in time order, from the picture store (``analyses`` is
+    the manager's ``VideoAnalyses``)."""
+    video = library.get(request.video_id)
+    stored = analyses.result_bytes(video.id)
+    if stored is None:
+        raise InvalidInputError(f"{video.name} is not analysed yet")
+    analysis = json.loads(stored)
+    frames = analysis["frames"]
+    indices = sorted(set(request.indices))
+    if any(index < 0 or index >= len(frames) for index in indices):
+        raise InvalidInputError(f"{video.name} has {len(frames)} analysed frames (0 to {len(frames) - 1})")
+    jpegs = []
+    for index in indices:
+        picture = analyses.frame(video.id, analysis["run"], index)
+        if picture is None:
+            raise InvalidInputError(f"the picture of frame {index} is missing: analyse the video again")
+        jpegs.append(picture)
+    times = [frames[index]["source_time"] for index in indices]
+    moments = ", ".join(f"{moment:.2f} s" for moment in times)
+    plural = "s" if len(indices) > 1 else ""
+    return Pictures(
+        jpegs=jpegs, times=times, description=f"{len(indices)} frame{plural} of {video.name} (at {moments})"
+    )
+
+
+async def load_pictures(
+    library: VideoLibrary,
+    video: VideoInput | None,
+    uploads: list[UploadFile] | None,
+    frames: AnalysedFramesInput | None = None,
+    analyses=None,
+) -> Pictures:
+    """Chosen analysed frames, else the video's sampled frames, else the uploaded pictures (maybe none)."""
+    if frames is not None:
+        return pictures_from_analysis(library, analyses, frames)
     if video is not None:
         return await pictures_from_video(library, video)
     return await pictures_from_uploads(uploads or [])

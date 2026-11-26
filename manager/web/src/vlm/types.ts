@@ -136,6 +136,13 @@ export const deletePrompt = (id: string) => api(`/api/prompts/${id}`, { method: 
 export const askVlm = (input: VlmInput | null, prompts: Prompt[]) =>
   api<{ pictures: PicturesShown; answers: Answer[] }>("/api/vlm/ask", { method: "POST", body: inputForm(input, { prompts }) });
 
+/** Ask about frames chosen among a library video's analysed frames (by their index). */
+export const askAboutFrames = (videoId: string, indices: number[], prompts: Prompt[], model: string) => {
+  const body = new FormData();
+  body.append("request", JSON.stringify({ frames: { video_id: videoId, indices }, prompts, model: model || null }));
+  return api<{ pictures: PicturesShown; answers: Answer[] }>("/api/vlm/ask", { method: "POST", body });
+};
+
 export const listWorkflows = () => api<(Workflow & { id: string })[]>("/api/workflows");
 export const saveWorkflow = (workflow: Workflow) => {
   const { id, ...body } = workflow;
