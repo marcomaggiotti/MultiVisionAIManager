@@ -48,11 +48,16 @@ persist are written to the feedback log, with the time, so you can jump back to 
   Keypoints corrected in the studio or in Analysis are saved at once and replace the frame
   in the stored analysis and in the keypoint track. **📷 Snapshot** (S) keeps the frame in
   the snapshot library and opens it in *Analysis → Video keypoints*
-  (`/analysis?video=<id>&t=<seconds>`). The camera runs in real time until *■ Stop* (its
-  *Save* stays manual); pictures are analysed in the studio and saved.
+  (`/analysis?video=<id>&t=<seconds>`). The camera runs in real time until *■ Stop*, which
+  saves its session; pictures are analysed in the studio and saved. There is no Save
+  button: everything is saved by itself.
 - **AI coach** sends the shown frame through the full pipeline (CLIP + VLM) for a
-  teacher-style comment. **Save** (camera; automatic for videos) stores the session (counts, events, comments, angle
-  series) in the manager.
+  teacher-style comment. Each session (counts, events, comments, angle series) is saved
+  in the manager by itself.
+- **Timeline**: press on a track and slide to move through the video (the panels follow).
+  The time (m:ss.cc) and the frame number can be typed to go to an exact frame; coming back to
+  the studio reloads the video's analysis, so keypoints corrected in Analysis show here too
+  (Analysis' *▶ Live studio* opens the same frame).
 - **Player** under the timeline: play / pause, first / last frame, one frame back or
   forward, −3/−2/−1 s and +1/+2/+3 s, replay speed ×0.25 to ×2. While the camera or a video
   runs, Pause freezes the capture (a video file pauses too) so the moment can be inspected.
@@ -158,8 +163,9 @@ they are uploaded once and chosen anywhere:
 
 - **Add** videos (button or drag and drop, several at once, with a progress bar); each is
   checked with `ffprobe` (duration, size), gets a thumbnail and is **analysed** by the
-  manager: a window shows the progress until the analysis is done (it goes on in the
-  background if closed); each card shows its state, *↻* analyses it again.
+  manager: the progress shows at the top right of every page (⏳ *Analysing … %*, then
+  *✓ analysed · open ▶*, which opens it in the live studio); each card shows its state,
+  *↻* analyses it again.
   Code: `manager/api/app/media/video_analysis.py` (`VideoAnalyses`: queue, one video at a
   time, resumed after a restart); stored in `<data>/analyses/<video id>/` (`analysis.json`
   and the analysed pictures), the keypoint track and a session. API:

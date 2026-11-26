@@ -1,5 +1,5 @@
-import { useEffect, useRef } from "react";
-import { Recorded, Vocabulary, fmtTime, stepColor } from "./types";
+import { KeyboardEvent, useEffect, useRef, useState } from "react";
+import { Recorded, Vocabulary, stepColor } from "./types";
 
 type TrackKind = "poses" | "motion" | "legs" | "knees";
 
@@ -64,12 +64,30 @@ function Track({ kind, frames, index, onSeek, vocab, version }: {
       ctx.beginPath(); ctx.moveTo(x(index), 0); ctx.lineTo(x(index), H); ctx.stroke();
     }
   }, [frames, index, kind, vocab, version]);
+  /** The frame under the mouse (the tracks span the recording, 8 px margin each side). */
+  const frameAt = (element: HTMLCanvasElement, clientX: number) => {
+    const r = element.getBoundingClientRect();
+    const n = frames.length;
+    return Math.max(0, Math.min(n - 1, Math.round(((clientX - r.left - 8) / (r.width - 16)) * (n - 1))));
+  };
+  const dragging = useRef(false);
+  // Press and slide: the playhead follows the mouse and the panels show each frame passed.
   return (
-    <canvas ref={canvas} onClick={(e) => {
-      const r = e.currentTarget.getBoundingClientRect();
-      const n = frames.length;
-      if (n) onSeek(Math.max(0, Math.min(n - 1, Math.round(((e.clientX - r.left - 8) / (r.width - 16)) * (n - 1)))));
-    }} />
+    <canvas ref={canvas} className="scrub"
+      onPointerDown={(event) => {
+        if (!frames.length || event.button !== 0) return;
+        dragging.current = true;
+        event.currentTarget.setPointerCapture(event.pointerId);
+        onSeek(frameAt(event.currentTarget, event.clientX));
+      }}
+      onPointerMove={(event) => {
+        if (dragging.current) onSeek(frameAt(event.currentTarget, event.clientX));
+      }}
+      onPointerUp={(event) => {
+        dragging.current = false;
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }}
+      onPointerCancel={() => { dragging.current = false; }} />
   );
 }
 
@@ -84,6 +102,37 @@ export function frameIndexAtTime(frames: Recorded[], seconds: number): number {
     if (Math.abs(frame.result.t - seconds) < Math.abs(frames[best].result.t - seconds)) best = index;
   });
   return best;
+}
+
+/** "0:37.80", "37.8", "1:02,35" → seconds; null when it is not a time. */
+export function parseTime(text: string): number | null {
+  const cleaned = text.trim().replace(",", ".").replace(/\s*s$/, "");
+  const match = /^(?:(\d+):)?(\d+(?:\.\d*)?)$/.exec(cleaned);
+  if (!match) return null;
+  return Number(match[1] ?? 0) * 60 + Number(match[2]);
+}
+
+/** m:ss.cc: hundredths, so that every frame of a video has its own time. */
+export const preciseTime = (seconds: number) =>
+  `${Math.floor(seconds / 60)}:${(seconds % 60).toFixed(2).padStart(5, "0")}`;
+
+/** A value shown as text that can be typed over: Enter (or leaving the field) applies it, Escape cancels. */
+function EditableValue({ value, onCommit, label, width }: { value: string; onCommit: (text: string) => void; label: string; width: number }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = () => {
+    if (draft !== null && draft !== value) onCommit(draft);
+    setDraft(null);
+  };
+  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    event.stopPropagation(); // typing digits, "," or "." must not move the player
+    if (event.key === "Enter") event.currentTarget.blur();
+    if (event.key === "Escape") { setDraft(null); event.currentTarget.blur(); }
+  };
+  return (
+    <input className="mono editable-value" aria-label={label} title={`${label}: type a value and press Enter`} style={{ width }}
+      value={draft ?? value} onFocus={(event) => { setDraft(value); event.currentTarget.select(); }}
+      onChange={(event) => setDraft(event.target.value)} onBlur={commit} onKeyDown={onKeyDown} />
+  );
 }
 
 export type PlayerState = {
@@ -155,10 +204,20 @@ function PlayerControls({ frames, index, player, actions }: { frames: Recorded[]
           {PLAYBACK_SPEEDS.map((speed) => <option key={speed} value={speed}>×{speed}</option>)}
         </select>
       </div>
-      <span className="mono">{fmtTime(currentTime)} / {fmtTime(totalTime)}</span>
+      <span className="mono player-position">
+        <EditableValue label="Time" width={78} value={preciseTime(currentTime)} onCommit={(text) => {
+          const seconds = parseTime(text);
+          if (seconds !== null && hasFrames) actions.onSeek(frameIndexAtTime(frames, seconds));
+        }} /> / {preciseTime(totalTime)}
+      </span>
       <input type="range" min={0} max={Math.max(0, frameCount - 1)} value={Math.max(0, index)}
         onChange={(event) => actions.onSeek(Number(event.target.value))} disabled={!hasFrames} aria-label="Position" />
-      <span className="mono small muted">{frameCount} frames</span>
+      <span className="mono small muted player-position">
+        frame <EditableValue label="Frame" width={52} value={String(hasFrames ? index + 1 : 0)} onCommit={(text) => {
+          const number = Number.parseInt(text, 10);
+          if (Number.isFinite(number) && hasFrames) actions.onSeek(Math.max(0, Math.min(frameCount - 1, number - 1)));
+        }} /> / {frameCount}
+      </span>
       <button className="small" title="Snapshot of the shown frame (S): a saved library video opens at this frame in Analysis" disabled={!hasFrames} onClick={actions.onSnapshot}>📷 Snapshot</button>
       <button className="small ghost" title="Correct the keypoints of the shown frame (E)" disabled={!frames[index]?.result.dancer}
         onClick={actions.onAdjustKeypoints}>✎ Adjust keypoints</button>

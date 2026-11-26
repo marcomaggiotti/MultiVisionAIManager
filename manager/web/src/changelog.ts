@@ -4,6 +4,32 @@ export type Release = { version: string; date: string; title: string; changes: s
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.24.0", date: "2026-11-26", title: "Exact frame in the studio, same keypoints as Analysis",
+    changes: [
+      "Live studio player: the time (m:ss.cc, every frame has its own) and the frame number can be typed: Enter goes to that exact frame (“37.8”, “0:37,80” or “1:02.35” work).",
+      "Keypoints corrected in the Analysis tab (or the YOLO tab) are shown in the live studio: coming back to it reloads the video's analysis at the same frame.",
+      "Analysis → Video keypoints: “▶ Live studio” opens the selected frame in the studio, paused, with the same keypoints and every panel.",
+    ],
+  },
+  {
+    version: "0.23.3", date: "2026-11-25", title: "Timeline: slide with the mouse",
+    changes: [
+      "Live studio timeline: press on any track (poses, motion energy, leg elevation, knee angles) and slide: the playhead follows the mouse and the panels and keypoints show each frame passed (it keeps following outside the track until you release).",
+    ],
+  },
+  {
+    version: "0.23.2", date: "2026-11-25", title: "Analysis progress in the top bar",
+    changes: [
+      "The analysis of library videos shows at the top right of every page: “⏳ Analysing name 68 %” (+N when more wait), then “✓ name analysed · open ▶” for a moment, which opens it in the live studio. The pop-up window after an upload is gone.",
+    ],
+  },
+  {
+    version: "0.23.1", date: "2026-11-25", title: "Live studio: no Save button",
+    changes: [
+      "The Save button is gone: library videos are saved by their analysis, pictures when their analysis ends, and a camera session when you press ■ Stop (Sessions tab).",
+    ],
+  },
+  {
     version: "0.23.0", date: "2026-11-25", title: "Videos are analysed when added to the library",
     changes: [
       "Adding a video to the library starts its analysis in the manager: every frame's keypoints, angles, movements and corrections (15 frames per second, at most 1500). A window shows the progress until it is done; each card shows its state; ↻ analyses again.",

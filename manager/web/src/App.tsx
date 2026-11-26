@@ -14,6 +14,7 @@ import ClipStudio from "./pages/ClipStudio";
 import VlmStudio from "./pages/VlmStudio";
 import { LiveSessionProvider, useLiveSession } from "./live/LiveSessionContext";
 import { VersionBadge } from "./components/VersionBadge";
+import { AnalysisIndicator } from "./components/AnalysisIndicator";
 
 const NAV = [
   { to: "/", label: "Live studio" },
@@ -56,6 +57,7 @@ function Shell() {
           {NAV.map((n) => <NavLink key={n.to} to={n.to} end={n.to === "/"}>{n.label}{n.to === "/" && <LiveIndicator />}</NavLink>)}
         </nav>
         <span className="spacer" />
+        <AnalysisIndicator />
         <VersionBadge />
         <select className="pill" style={{ width: "auto" }} defaultValue="ballet" title="Discipline">
           <option value="ballet">Classical ballet</option>

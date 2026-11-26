@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, form, post } from "../api";
 import { useLoad } from "../hooks";
@@ -54,9 +54,11 @@ function savedPanels(): string[] {
 export default function LiveStudio() {
   // Kept by the app while other tabs are shown: the video goes on where it was.
   const {
-    live, playback, source, setSource, setFiles, overlays, setOverlays, mirror, setMirror, analyse, save, saving, updateFrame, analysisSaved,
-    libraryVideo, openLibraryVideo, closeLibraryVideo, opening,
+    live, playback, source, setSource, setFiles, overlays, setOverlays, mirror, setMirror, analyse, saving, updateFrame, analysisSaved,
+    libraryVideo, openLibraryVideo, refreshLibraryVideo, closeLibraryVideo, opening,
   } = useLiveSession();
+  // back in the studio: keypoints corrected meanwhile (Analysis, YOLO tab) are shown here too
+  useEffect(() => { void refreshLibraryVideo(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const navigate = useNavigate();
   const library = useLoad(listVideos, [], LIBRARY_REFRESH_MS); // analyses progress in the manager
   const vocab = useLoad(() => api<Vocabulary>("/api/ballet/vocabulary"), []).data;
@@ -280,9 +282,8 @@ export default function LiveStudio() {
               <b className="small">Analysing {Math.round((live.progress ?? 0) * 100)} %</b>
             </span>
           )}
-          {(isLive || live.status === "connecting") && <button className="danger" onClick={() => live.stop()}>■ Stop</button>}
-          {source === "camera" && <button className="ghost" onClick={save} disabled={!frames.length || isLive || saving || busy !== null}>{saving ? "Saving…" : "Save"}</button>}
-          {source !== "camera" && saving && <span className="small muted">Saving…</span>}
+          {(isLive || live.status === "connecting") && <button className="danger" onClick={() => live.stop()} title="Stop the camera: the session is saved (Sessions tab)">■ Stop</button>}
+          {saving && <span className="small muted">Saving…</span>}
           <button className="success" onClick={coach} disabled={!frame || busy !== null} title="Deeper feedback on the shown frame (CLIP + VLM)">{busy === "coach" ? "Asking…" : "AI coach"}</button>
           <button className="danger" onClick={() => { live.reset(); playback.reset(); }} disabled={isLive || !frames.length}>Reset</button>
         </div>
