@@ -38,6 +38,7 @@ from app.api import (
     modules,
     snapshots,
     video_comparisons,
+    video_extras,
     videos,
     vlm,
 )
@@ -53,6 +54,8 @@ from app.media.library import VideoLibrary
 from app.media.picture_store import create_picture_store
 from app.media.snapshots import SnapshotLibrary
 from app.media.video_analysis import VideoAnalyses
+from app.media.video_audio import VideoAudio
+from app.media.video_notes import VideoNotes
 from app.modules import ModuleRegistry, load_modules
 from app.storage import HistoryStore
 from app.version import manager_version
@@ -118,6 +121,10 @@ def create_app(
             settings.picture_store, data_dir, settings.picture_database,
             settings.azure_storage_connection_string, settings.azure_storage_container,
         )  # fmt: skip
+        app.state.video_notes = VideoNotes(app.state.store.database_path)
+        app.state.video_audio = VideoAudio(
+            app.state.store.database_path, app.state.library, app.state.pictures, app.state.registry, http_client
+        )
         app.state.video_analyses = VideoAnalyses(
             data_dir, app.state.store.database_path, app.state.library, app.state.store,
             app.state.keypoint_tracks, analyse_frame, app.state.pictures,
@@ -148,6 +155,7 @@ def create_app(
         videos,
         snapshots,
         video_comparisons,
+        video_extras,
         vlm,
         flows,
         agents,

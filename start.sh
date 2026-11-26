@@ -32,7 +32,8 @@ fi
 #   modules/yolo = https://github.com/marcomaggiotti/detect_image_engine
 #   modules/clip = https://github.com/marcomaggiotti/visual-semantic-engine
 #   modules/vlm  = https://github.com/marcomaggiotti/vlm_hub_engine
-for module in yolo clip vlm; do
+#   modules/audio = https://github.com/marcomaggiotti/audio_clean_service
+for module in yolo clip vlm audio; do
   if [ ! -f "modules/$module/Dockerfile" ]; then
     echo "Cloning the $module module into modules/$module..."
     git submodule update --init --recursive "modules/$module"

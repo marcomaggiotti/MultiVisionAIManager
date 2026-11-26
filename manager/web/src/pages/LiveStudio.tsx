@@ -18,6 +18,10 @@ import { KeypointsLive } from "../live/KeypointsLive";
 import { KeypointCollection } from "../live/KeypointCollection";
 import { analysisLabel, formatDuration, listVideos } from "../library/videos";
 import { frameImage } from "../live/frameImage";
+import { NotesPanel } from "../live/NotesPanel";
+import { AudioPanel, SoundChoice } from "../live/AudioPanel";
+import { frameIndexAtTime } from "../live/Timeline";
+import { AudioInfo, VideoNote, listNotes, noteAt } from "../library/videoExtras";
 import { Recorded, STATUS_COLOR, Status, Vocabulary, fmtTime, stepColor } from "../live/types";
 
 const PART_LABEL: Record<string, string> = {
@@ -89,6 +93,36 @@ export default function LiveStudio() {
   const savedKeypointFrames = chosenVideo?.keypoint_frames ?? 0;
   const frame = playback.shownFrame;
 
+  // notes on the frames of the library video shown
+  const [notes, setNotes] = useState<VideoNote[]>([]);
+  const [noteEditing, setNoteEditing] = useState(false);
+  useEffect(() => {
+    setNotes([]);
+    if (chosenVideo) listNotes(chosenVideo.id).then(setNotes).catch(() => setNotes([]));
+  }, [chosenVideo?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const noted = useMemo(() => new Set(frames.flatMap((recorded, index) => (noteAt(notes, recorded.sourceTime) ? [index] : []))),
+    [notes, frames, live.version]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // the video's sound (original or cleaned), played in time with the frames
+  const [sound, setSound] = useState<SoundChoice>("off");
+  const [audio, setAudio] = useState<AudioInfo | null>(null);
+  const player = useRef<HTMLAudioElement>(null);
+  const soundUrl = sound === "off" || !chosenVideo ? null : audio?.[sound] ?? null;
+  useEffect(() => { setSound("off"); setAudio(null); }, [chosenVideo?.id]);
+  useEffect(() => {
+    const element = player.current;
+    if (!element || !soundUrl) return;
+    const time = frame?.sourceTime ?? 0;
+    element.playbackRate = playback.player.speed;
+    if (playback.player.playing) {
+      if (element.paused || Math.abs(element.currentTime - time) > 0.35) element.currentTime = time;
+      if (element.paused) void element.play().catch(() => undefined);
+    } else {
+      element.pause();
+      element.currentTime = time;
+    }
+  }, [soundUrl, playback.player.playing, playback.player.speed, frame?.sourceTime]);
+
   const { holdCurrentFrame, shownIndex } = playback;
   /** 📷: a frame of a saved library video is kept in the snapshot library and opened in
    * Analysis (Video keypoints, at that frame); a camera frame (or one not saved yet)
@@ -113,12 +147,17 @@ export default function LiveStudio() {
     holdCurrentFrame();
     setAdjustedFrameIndex(shownIndex);
   }, [frame, holdCurrentFrame, shownIndex]);
-  const shortcuts = useMemo(() => ({ snapshot: openSnapshot, adjustKeypoints: openKeypointAdjustment }), [openSnapshot, openKeypointAdjustment]);
+  const openNote = useCallback(() => {
+    if (!chosenVideo || frame?.sourceTime == null) return;
+    holdCurrentFrame();
+    setNoteEditing(true);
+  }, [chosenVideo, frame, holdCurrentFrame]);
+  const shortcuts = useMemo(() => ({ snapshot: openSnapshot, adjustKeypoints: openKeypointAdjustment, note: openNote }), [openSnapshot, openKeypointAdjustment, openNote]);
   const dialogOpen = snapshotFrame !== null || adjustedFrameIndex !== null || cutting;
   usePlayerKeyboard(frames, playback, shortcuts, !dialogOpen);
   const playerActions: PlayerActions = {
     onTogglePlay: playback.togglePlay, onSeek: playback.seek, onSpeed: playback.setSpeed, onFollow: playback.follow,
-    onSnapshot: openSnapshot, onAdjustKeypoints: openKeypointAdjustment,
+    onSnapshot: openSnapshot, onAdjustKeypoints: openKeypointAdjustment, onNote: chosenVideo ? openNote : undefined,
   };
 
   const held = useMemo(() => {
@@ -309,7 +348,8 @@ export default function LiveStudio() {
           ))}
         </div>
         <Timeline frames={frames} index={playback.shownIndex} version={live.version} vocab={vocab}
-          player={playback.player} actions={playerActions} />
+          player={playback.player} actions={playerActions} noted={noted} />
+        {soundUrl && <audio ref={player} src={soundUrl} preload="auto" hidden />}
         <KeypointCollection frames={frames} shownIndex={playback.shownIndex} version={live.version}
           keypoint={hoveredKeypoint ?? followedKeypoint} onKeypoint={setFollowedKeypoint} onSeek={playback.seek} />
         {snapshotFrame && <SnapshotDialog frame={snapshotFrame} overlays={overlays} onClose={() => setSnapshotFrame(null)} />}
@@ -325,6 +365,20 @@ export default function LiveStudio() {
 
       {/* ---------- right ---------- */}
       <div className="col right">
+        {chosenVideo && (
+          <details className="glass" open>
+            <summary style={{ fontWeight: 600 }}>📝 Notes · {notes.length}</summary>
+            <NotesPanel videoId={chosenVideo.id} notes={notes} onNotes={setNotes} time={frame?.sourceTime ?? null}
+              editing={noteEditing} onEditing={setNoteEditing}
+              onSeekTime={(seconds) => { setNoteEditing(false); playback.seek(frameIndexAtTime(frames, seconds)); }} />
+          </details>
+        )}
+        {chosenVideo && (
+          <details className="glass">
+            <summary style={{ fontWeight: 600 }}>🎵 Sound{audio?.cleaned ? " · cleaned" : audio?.original ? " · extracted" : ""}</summary>
+            <AudioPanel videoId={chosenVideo.id} sound={sound} onSound={setSound} onAudio={setAudio} />
+          </details>
+        )}
         <details className="glass" open>
           <summary style={{ fontWeight: 600 }}>Keypoints · live</summary>
           <KeypointsLive frame={frame} highlighted={hoveredKeypoint ?? followedKeypoint}

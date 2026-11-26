@@ -12,6 +12,8 @@ import { download } from "../live/keypointData";
 import { LibraryVideo, formatDuration } from "../library/videos";
 import { SnapshotTarget, sendSnapshot } from "../live/snapshot";
 import { useLiveSession } from "../live/LiveSessionContext";
+import { NotesPanel } from "../live/NotesPanel";
+import { VideoNote, listNotes } from "../library/videoExtras";
 
 const VISIBLE = 0.5;
 const FOCUS_MARGIN_S = 5; // a focused frame opens with this much video around it
@@ -84,6 +86,12 @@ export function VideoKeypoints({ focus = null }: { focus?: FrameFocus | null }) 
   const grid = useRef<HTMLDivElement>(null);
   const latestRequest = useRef(0); // answers to older requests are ignored (a slow one must not overwrite a newer range)
   const video = videos.data?.find((candidate) => candidate.id === videoId);
+  const [notes, setNotes] = useState<VideoNote[]>([]);
+  const [noteEditing, setNoteEditing] = useState(false);
+  useEffect(() => {
+    setNotes([]);
+    if (videoId) listNotes(videoId).then(setNotes).catch(() => setNotes([]));
+  }, [videoId]);
 
   // the first video with saved keypoints, by default (or the focused frame's video)
   useEffect(() => {
@@ -323,6 +331,12 @@ export function VideoKeypoints({ focus = null }: { focus?: FrameFocus | null }) 
                   <SkeletonOverlay frame={current} highlight={hovered ?? keypoint} />
                 </div>
                 {current.adjusted && <p className="small"><span className="adjusted-tag">✎ adjusted</span> keypoints corrected by hand</p>}
+                <NotesPanel videoId={video.id} notes={notes} onNotes={setNotes} time={current.source_time} editing={noteEditing} onEditing={setNoteEditing}
+                  onSeekTime={(seconds) => {
+                    setNoteEditing(false);
+                    const index = frames.findIndex((frame) => Math.abs(frame.source_time - seconds) < 0.002);
+                    if (index >= 0) setSelected(index);
+                  }} />
                 <div className="row" style={{ gap: 6, marginTop: 8 }}>
                   <button className="small" disabled={video.analysis?.status !== "done"}
                     title="The live studio at this exact frame: the same keypoints, with every panel"

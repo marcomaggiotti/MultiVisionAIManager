@@ -4,6 +4,15 @@ export type Release = { version: string; date: string; title: string; changes: s
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.30.0", date: "2026-11-26", title: "Notes on frames; the video's sound, extracted and cleaned",
+    changes: [
+      "Live studio (library videos): 📝 Note (or N) writes a text note on the shown frame; the Notes panel lists them (click to go there) and the timeline marks them. Analysis shows and edits them too.",
+      "🎵 Sound: extract the video's audio and clean it with the new audio module (audio_clean_service): its agent measures the recording, tries plans and keeps the best for the goal (speech, listening, archive), or choose the filters (de-clip, de-click, de-hum, high-pass, noise reduction, loudness).",
+      "Pauses are never shortened, so the original or cleaned sound plays in time with the frames. The report shows the plan, the reasons, the measurements before / after and the spectrograms.",
+      "New module: modules/audio (git submodule, Docker service “audio”, started when needed).",
+    ],
+  },
+  {
     version: "0.29.0", date: "2026-11-26", title: "VLM agent systems; Compare: library videos only, camera asks again",
     changes: [
       "VLM → Agents: sequential agent systems drawn as a graph (agents as ellipses, tools as boxes; the active agent turns green while it runs). Each agent: instruction, model (local VLM and which of its models, or a cloud model), tools, sees the frames or not; it reads the earlier answers ({{describer_agent}}…).",

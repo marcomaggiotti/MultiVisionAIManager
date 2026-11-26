@@ -105,10 +105,23 @@ services:
     volumes: [vlm-data:/data, hf-cache:/hf]
     ports: ["127.0.0.1:${VLM_PORT:-8003}:8000"]
 
+  audio:
+    # Audio cleaning service: https://github.com/marcomaggiotti/audio_clean_service (git submodule).
+    # Extracted class audio is analysed, an agent picks the cleaning, ffmpeg filters it.
+    build: ./modules/audio
+    environment:
+      CLEANING_AGENT: ${AUDIO_CLEANING_AGENT:-auto}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}  # optional: the Claude agent; else the rule-based one
+      MAX_UPLOAD_MB: ${AUDIO_MAX_UPLOAD_MB:-500}
+      MAX_AUDIO_SECONDS: ${AUDIO_MAX_SECONDS:-10800}
+    volumes: [audio-data:/data]
+    ports: ["127.0.0.1:${AUDIO_PORT:-8004}:10000"]
+
 volumes:
   web-certs:
   manager-data:
   yolo-data:
   clip-data:
   vlm-data:
+  audio-data:
   hf-cache:

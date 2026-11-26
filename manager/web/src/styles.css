@@ -457,3 +457,20 @@ pre.architecture { font-size: 11px; line-height: 1.45; overflow-x: auto; backgro
 .agent-tool text { fill: #f2f2f2; font-size: 13px; }
 .agent-tool.called rect { fill: #1d3d6b; stroke: #8fb8ff; }
 @keyframes agent-pulse { 50% { opacity: .75; } }
+
+/* ---- live studio: notes and sound of a library video ---- */
+.notes-panel { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.note-editor { display: flex; flex-direction: column; gap: 6px; }
+.note-current { padding: 8px 10px; border-left: 3px solid #f5f7ff; background: rgba(255,255,255,.04); border-radius: 6px; cursor: pointer; }
+.notes-list { display: flex; flex-direction: column; gap: 2px; max-height: 260px; overflow: auto; }
+.note-item { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 8px; text-align: left; padding: 4px 6px; background: transparent; border: 0; color: var(--fg); font-weight: 400; border-radius: 6px; }
+.note-item .small:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.note-item:hover, .note-item.on { background: rgba(255,255,255,.06); }
+.audio-panel { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.audio-filters { display: flex; flex-direction: column; gap: 4px; }
+.audio-report { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line); padding-top: 8px; }
+.audio-measures td, .audio-measures th { padding: 2px 6px; text-align: right; }
+.audio-measures td:first-child { text-align: left; }
+.audio-spectrograms { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.audio-spectrograms img { width: 100%; border-radius: 4px; background: #000; }
+.audio-spectrograms figcaption { font-size: 11px; color: var(--muted); text-align: center; }
