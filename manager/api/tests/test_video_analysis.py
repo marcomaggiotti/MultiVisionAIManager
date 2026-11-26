@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import pathlib
 import time
 
 import pytest
@@ -48,8 +50,13 @@ def test_an_added_video_is_analysed_saved_and_kept_up_to_date(make_client, sampl
         assert frames[0]["source_time"] == 0.0 and frames[0]["dancer"]["keypoints"]
         assert frames[0]["evaluation"]["pose"] and analysis["counts"]
         assert video["keypoint_frames"] == len(frames) and video["analysis"]["frames"] == len(frames)
-        picture = client.get(f"/api/videos/{added['id']}/analysis/frames/3.jpg")
+        run = analysis["run"]
+        picture = client.get(f"/api/videos/{added['id']}/analysis/frames/{run}/3.jpg")
         assert picture.headers["content-type"] == "image/jpeg" and picture.content[:2] == b"\xff\xd8"
+        # the pictures are in the picture database, not in files
+        pictures = client.app.state.pictures
+        assert pictures.name == "database" and pictures.get(f"frames/{added['id']}/{run}/3.jpg") == picture.content
+        assert not list(pathlib.Path(client.app.state.settings.data_dir).glob("analyses/*"))
         assert any(session["id"] == f"analysis-{added['id']}" for session in client.get("/api/live/sessions").json())
 
         # a keypoint correction replaces the analysed frame and its track; removing it restores the model's
@@ -72,6 +79,48 @@ def test_an_added_video_is_analysed_saved_and_kept_up_to_date(make_client, sampl
         again = client.post(f"/api/videos/{added['id']}/analysis", json={"fps": 5}).json()
         assert again["analysis"]["status"] == "queued" and again["analysis"]["settings"]["fps"] == 5
         assert wait_until_analysed(client, added["id"])["analysis"]["frames"] in range(29, 32)
+        new_run = client.get(f"/api/videos/{added['id']}/analysis").json()["run"]
+        assert (
+            new_run != run and client.get(f"/api/videos/{added['id']}/analysis/frames/{run}/3.jpg").status_code == 404
+        )
+        assert {key.split("/")[2] for key in pictures.keys(f"frames/{added['id']}/")} == {new_run}  # old pictures gone
 
         assert client.delete(f"/api/videos/{added['id']}").status_code == 204
-        assert client.get(f"/api/videos/{added['id']}/analysis/frames/0.jpg").status_code == 404
+        assert client.get(f"/api/videos/{added['id']}/analysis/frames/{new_run}/0.jpg").status_code == 404
+        assert (
+            list(pictures.keys(f"frames/{added['id']}/")) == [] and pictures.get(f"analyses/{added['id']}.json") is None
+        )
+
+
+@needs_ffmpeg
+def test_asking_the_vlm_about_chosen_analysed_frames(make_client, sample_video):  # noqa: F811
+    from tests.conftest import Scripted
+    from tests.test_agents_and_flows import Modules
+
+    yolo, vlm = Scripted([FIRST_POSITION_LIKE] * 200), Modules()
+
+    def modules(request):
+        return vlm(request) if request.url.host == "vlm" else yolo(request)
+
+    with make_client(
+        [], handler=modules, modules="yolo=http://yolo:8000,vlm=http://vlm:8000", analyse_videos=True
+    ) as client:
+        with sample_video.open("rb") as file:
+            [added] = client.post("/api/videos", files={"files": ("rehearsal.mp4", file, "video/mp4")}).json()["saved"]
+        assert wait_until_analysed(client, added["id"])["analysis"]["status"] == "done"
+        frames = client.get(f"/api/videos/{added['id']}/analysis").json()["frames"]
+
+        ask = {
+            "frames": {"video_id": added["id"], "indices": [30, 15]},  # in time order whatever the clicks
+            "model": "large-vlm",
+            "prompts": [{"name": "Steps", "text": "Name the steps in {{input}}."}],
+        }
+        result = client.post("/api/vlm/ask", data={"request": json.dumps(ask)}).json()
+        assert result["pictures"]["times"] == [frames[15]["source_time"], frames[30]["source_time"]]
+        assert result["pictures"]["description"] == "2 frames of rehearsal.mp4 (at 1.00 s, 2.00 s)"
+        assert result["answers"][0]["text"] == "VLM: Name the steps in 2 frames of rehearsal.mp4 (at 1.00 s, 2.00 s)."
+        assert vlm.vlm_loads == ["large-vlm"] and vlm.vlm_answered_with == ["large-vlm"]
+
+        wrong = {**ask, "frames": {"video_id": added["id"], "indices": [len(frames)]}}
+        failed = client.post("/api/vlm/ask", data={"request": json.dumps(wrong)})
+        assert failed.status_code == 422 and "analysed frames" in failed.json()["detail"]

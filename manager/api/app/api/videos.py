@@ -187,22 +187,23 @@ async def cut_library_video(
 
 # --- analysis (done by the manager when a video is added; played by the live studio) ---
 @router.get("/api/videos/{video_id}/analysis")
-def video_analysis(video_id: str, library: Library, request: Request) -> FileResponse:
+def video_analysis(video_id: str, library: Library, request: Request) -> Response:
     """Every analysed frame (keypoints, evaluation, movement), the movements and comments."""
     library.get(video_id)
-    path = get_analyses(request).result_path(video_id)
-    if not path.exists():
+    result = get_analyses(request).result_bytes(video_id)
+    if result is None:
         raise RecordNotFoundError(f"video {video_id!r} is not analysed yet")
-    return FileResponse(path, media_type="application/json", headers={"Cache-Control": "no-store"})
+    return Response(result, media_type="application/json", headers={"Cache-Control": "no-store"})
 
 
-@router.get("/api/videos/{video_id}/analysis/frames/{index}.jpg")
-def analysed_frame(video_id: str, index: int, request: Request) -> FileResponse:
-    """One analysed picture (the size the keypoints are measured in)."""
-    path = get_analyses(request).frame_path(video_id, index)
-    if not path.exists():
+@router.get("/api/videos/{video_id}/analysis/frames/{run}/{index}.jpg")
+def analysed_frame(video_id: str, run: str, index: int, request: Request) -> Response:
+    """One analysed picture (the size the keypoints are measured in), from the picture store.
+    ``run`` is the analysis' ``run``: a new analysis gives new URLs, so they can be cached."""
+    picture = get_analyses(request).frame(video_id, run, index)
+    if picture is None:
         raise RecordNotFoundError(f"frame {index} of video {video_id!r} not found")
-    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=3600"})
+    return Response(picture, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400, immutable"})
 
 
 class AnalysisRequest(BaseModel):

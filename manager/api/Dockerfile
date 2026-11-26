@@ -5,7 +5,9 @@ WORKDIR /srv
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
 COPY pyproject.toml ./
 COPY app ./app
-RUN pip install .
+# PIP_EXTRAS=azure adds the Azure Blob Storage picture store
+ARG PIP_EXTRAS=""
+RUN if [ -n "$PIP_EXTRAS" ]; then pip install ".[$PIP_EXTRAS]"; else pip install .; fi
 RUN useradd --system --uid 10001 --create-home app && mkdir -p /data && chown app /data
 USER app
 VOLUME /data

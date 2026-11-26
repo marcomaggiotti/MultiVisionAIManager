@@ -2,12 +2,15 @@
 
 Every frame of the video (at ``fps``, at most ``MAX_FRAMES``) goes through the same
 pipeline as the live studio (YOLO pose → main dancer → smoothing → ballet evaluation →
-movements and corrections), in video time. The result is stored with the video:
+movements and corrections), in video time. The result goes to the picture store
+(a database now, Azure Blob Storage later: see ``picture_store.py``):
 
-    <data>/analyses/<video id>/analysis.json   every frame's result, movements, comments
-    <data>/analyses/<video id>/frames/N.jpg     the analysed pictures (for the studio)
+    analyses/<video id>.json            every frame's result, movements, comments
+    frames/<video id>/<run>/<N>.jpg     the analysed pictures (for the studio)
 
-plus the keypoint track (``video_keypoints``, read by the Analysis tab) and a session
+``<run>`` changes with each analysis, so a new analysis replaces the old one at once
+(its pictures are deleted after), and a picture's URL never shows another picture. Plus
+the keypoint track (``video_keypoints``, read by the Analysis tab) and a session
 (Sessions tab). The live studio only loads and plays this: it analyses nothing.
 Videos are analysed one at a time, in the order they were added; the state of each
 (queued, running with its progress, done, failed) is kept in SQLite so it survives a
@@ -32,6 +35,7 @@ from app.live.session import LiveSession, LiveSettings
 from app.media import ffmpeg
 from app.media.keypoint_tracks import KeypointTrackStore, TrackFrame
 from app.media.library import LibraryVideo, VideoLibrary
+from app.media.picture_store import JPEG, JSON, PictureStore
 from app.storage import HistoryStore
 
 logger = logging.getLogger(__name__)
@@ -140,9 +144,10 @@ class VideoAnalyses:
         store: HistoryStore,
         tracks: KeypointTrackStore,
         analyse_frame: FrameAnalyser,
+        pictures: PictureStore,
     ) -> None:
-        self.folder = data_dir / "analyses"
-        self.folder.mkdir(parents=True, exist_ok=True)
+        self.legacy_folder = data_dir / "analyses"  # before the picture store (imported at start)
+        self.pictures = pictures
         self.database_path = database_path
         self.library = library
         self.store = store
@@ -185,14 +190,53 @@ class VideoAnalyses:
                 ),
             )  # fmt: skip
 
-    def folder_of(self, video_id: str) -> Path:
-        return self.folder / Path(video_id).name
+    # --- what is stored in the picture store ------------------------------------------
+    @staticmethod
+    def result_key(video_id: str) -> str:
+        return f"analyses/{Path(video_id).name}.json"
 
-    def result_path(self, video_id: str) -> Path:
-        return self.folder_of(video_id) / "analysis.json"
+    @staticmethod
+    def frames_prefix(video_id: str, run: str | None = None) -> str:
+        return f"frames/{Path(video_id).name}/" + (f"{run}/" if run else "")
 
-    def frame_path(self, video_id: str, index: int) -> Path:
-        return self.folder_of(video_id) / "frames" / f"{index}.jpg"
+    @classmethod
+    def frame_key(cls, video_id: str, run: str, index: int) -> str:
+        return f"{cls.frames_prefix(video_id, Path(run).name)}{int(index)}.jpg"
+
+    def result_bytes(self, video_id: str) -> bytes | None:
+        """The stored analysis (JSON), or None when the video is not analysed."""
+        return self.pictures.get(self.result_key(video_id))
+
+    def frame(self, video_id: str, run: str, index: int) -> bytes | None:
+        return self.pictures.get(self.frame_key(video_id, run, index))
+
+    def _delete_other_runs(self, video_id: str, kept_run: str | None) -> None:
+        prefix = self.frames_prefix(video_id)
+        runs = {key[len(prefix) :].split("/", 1)[0] for key in self.pictures.keys(prefix)}
+        for run in runs - {kept_run}:
+            self.pictures.delete_prefix(self.frames_prefix(video_id, run))
+
+    def import_legacy_folders(self) -> int:
+        """Analyses saved as files by an earlier version go into the picture store."""
+        if not self.legacy_folder.is_dir():
+            return 0
+        imported = 0
+        for folder in sorted(self.legacy_folder.iterdir()):
+            result_file = folder / "analysis.json"
+            if not folder.is_dir() or folder.name.endswith(".partial") or not result_file.exists():
+                shutil.rmtree(folder, ignore_errors=True)
+                continue
+            result = json.loads(result_file.read_text())
+            run = result["run"] = "imported"
+            for picture in (folder / "frames").glob("*.jpg"):
+                self.pictures.put(self.frame_key(folder.name, run, int(picture.stem)), picture.read_bytes(), JPEG)
+            self.pictures.put(self.result_key(folder.name), json.dumps(result).encode(), JSON)
+            shutil.rmtree(folder, ignore_errors=True)
+            imported += 1
+        shutil.rmtree(self.legacy_folder, ignore_errors=True)
+        if imported:
+            logger.info("moved %d analyses from files to the %s picture store", imported, self.pictures.name)
+        return imported
 
     # --- queue ----------------------------------------------------------------------
     def enqueue(self, video_id: str, settings: AnalysisSettings | None = None) -> AnalysisState:
@@ -205,6 +249,7 @@ class VideoAnalyses:
 
     def resume(self) -> int:
         """At start: analyse the videos never analysed, and those interrupted by a restart."""
+        self.import_legacy_folders()
         states = self.states()
         waiting = [
             video.id
@@ -219,7 +264,9 @@ class VideoAnalyses:
         """The video was deleted: its analysis goes too."""
         with self._connect() as connection:
             connection.execute("DELETE FROM video_analyses WHERE video_id = ?", (video_id,))
-        shutil.rmtree(self.folder_of(video_id), ignore_errors=True)
+        with self._lock:
+            self.pictures.delete_prefix(self.result_key(video_id))
+            self.pictures.delete_prefix(self.frames_prefix(video_id))
 
     async def run_forever(self) -> None:
         while True:
@@ -251,9 +298,7 @@ class VideoAnalyses:
         expected = max(1, int(video.duration * fps))
         session = LiveSession(LiveSettings(settings.smoothing, settings.hold, settings.confidence))
         session.use_media(video.media_key, self.store.list_adjustments(video.media_key))
-        work = self.folder_of(video.id).with_name(f"{video.id}.partial")
-        shutil.rmtree(work, ignore_errors=True)
-        (work / "frames").mkdir(parents=True)
+        run = f"{time.time_ns():x}"  # this analysis' pictures; the previous ones stay until it is done
 
         frames: list[dict] = []
         events: list[dict] = []
@@ -263,7 +308,7 @@ class VideoAnalyses:
             source_time = round(index / fps, 3)
             result = await self.analyse_frame(picture, session, source_time, settings.detection_confidence)
             result["t"] = source_time  # the studio's timeline is in video time
-            (work / "frames" / f"{index}.jpg").write_bytes(picture)
+            self.pictures.put(self.frame_key(video.id, run, index), picture, JPEG)
             frames.append({**result, "index": index})
             events.extend(result.get("new_events", []))
             comments.extend(result.get("new_comments", []))
@@ -271,6 +316,7 @@ class VideoAnalyses:
                 state.progress, state.frames = min(0.99, (index + 1) / expected), index + 1
                 self._save_state(state)
         if not frames:
+            self.pictures.delete_prefix(self.frames_prefix(video.id, run))
             raise ffmpeg.VideoError("no picture could be read from this video")
 
         last_time = frames[-1]["t"]
@@ -281,6 +327,7 @@ class VideoAnalyses:
             "media_key": video.media_key,
             "name": video.name,
             "fps": round(fps, 4),
+            "run": run,
             "settings": asdict(settings),
             "size": {"width": size[0], "height": size[1]},
             "analysed": time.time(),
@@ -289,10 +336,9 @@ class VideoAnalyses:
             "comments": comments,
             "counts": summary["counts"],
         }
-        (work / "analysis.json").write_text(json.dumps(result))
         with self._lock:
-            shutil.rmtree(self.folder_of(video.id), ignore_errors=True)
-            work.rename(self.folder_of(video.id))
+            self.pictures.put(self.result_key(video.id), json.dumps(result).encode(), JSON)
+        self._delete_other_runs(video.id, run)
         self.tracks.save(video.media_key, [self._track_frame(frame, video.id) for frame in frames])
         self.store.save_session(self._session(video, result), f"{video.name} · analysed in the library")
         state.status, state.progress, state.frames = DONE, 1.0, len(frames)
@@ -350,11 +396,13 @@ class VideoAnalyses:
         """
         changed = 0
         for video in self.library.list():
-            if video.media_key != media_key or not self.result_path(video.id).exists():
+            if video.media_key != media_key:
                 continue
             with self._lock:
-                path = self.result_path(video.id)
-                result = json.loads(path.read_text())
+                stored = self.result_bytes(video.id)
+                if stored is None:
+                    continue
+                result = json.loads(stored)
                 tolerance = 0.5 / max(result.get("fps") or 1, 1e-6)
                 for frame in result["frames"]:
                     if abs(frame["source_time"] - source_time) > tolerance:
@@ -369,7 +417,7 @@ class VideoAnalyses:
                         continue
                     self.tracks.save(media_key, [self._track_frame(frame, video.id)])
                     changed += 1
-                path.write_text(json.dumps(result))
+                self.pictures.put(self.result_key(video.id), json.dumps(result).encode(), JSON)
         return changed
 
     def apply_saved_adjustment(self, adjustment: KeypointAdjustment, evaluation: dict) -> int:

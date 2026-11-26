@@ -167,8 +167,8 @@ they are uploaded once and chosen anywhere:
   *✓ analysed · open ▶*, which opens it in the live studio); each card shows its state,
   *↻* analyses it again.
   Code: `manager/api/app/media/video_analysis.py` (`VideoAnalyses`: queue, one video at a
-  time, resumed after a restart); stored in `<data>/analyses/<video id>/` (`analysis.json`
-  and the analysed pictures), the keypoint track and a session. API:
+  time, resumed after a restart); the result and the analysed pictures go to the
+  **picture store** (below), plus the keypoint track and a session. API:
   `GET/POST /api/videos/{id}/analysis`, `GET /api/videos/{id}/analysis/frames/{n}.jpg`;
   `MANAGER_ANALYSE_VIDEOS=false` turns it off.
 - **Watch**, **rename**, add **notes** (dancer, class, what to look at), **download**,
@@ -201,6 +201,33 @@ per-frame calls are not listed: they are kept in its sessions).
 
 API: `GET /api/history?module&source&q&hours&limit&offset`, `GET /api/history/stats`,
 `GET/DELETE /api/history/{id}`, `/picture`, `DELETE /api/history?module=`.
+
+### Picture store: a database now, Azure later
+
+The pictures of the analysed frames and the analyses are kept in a **picture store**, a
+key → bytes store (`frames/<video id>/<run>/<n>.jpg`, `analyses/<video id>.json`) with two
+interchangeable implementations ([`picture_store.py`](manager/api/app/media/picture_store.py)):
+
+| `MANAGER_PICTURE_STORE` | Where | Notes |
+| --- | --- | --- |
+| `database` (default) | SQLite table `pictures` in `<data>/pictures.sqlite3` (WAL), in the `manager-data` volume | one row per picture, the JPEG in a BLOB column |
+| `azure` | an **Azure Blob Storage** container (key = blob name, content type kept) | `MANAGER_PIP_EXTRAS=azure` (installs `azure-storage-blob`), `MANAGER_AZURE_STORAGE_CONNECTION_STRING`, `MANAGER_AZURE_STORAGE_CONTAINER` |
+
+Each analysis writes its pictures under a new `<run>`, switches the stored result to it,
+then deletes the previous run, so a picture URL never changes content (the browser caches
+it). Analyses saved as files by earlier versions move into the store at start.
+
+Moving to Azure later (nothing else changes):
+
+```bash
+# .env: MANAGER_PIP_EXTRAS=azure and MANAGER_AZURE_STORAGE_CONNECTION_STRING=<connection string>
+docker compose up -d --build manager-api
+docker compose exec manager-api python -m app.media.picture_store migrate --to azure
+# .env: MANAGER_PICTURE_STORE=azure, then
+docker compose up -d manager-api
+```
+
+`python -m app.media.picture_store info` tells what the configured store holds.
 
 ## Admin: AI workflow builder and LangChain agents
 
@@ -428,6 +455,14 @@ manager. It is cloned automatically into `modules/vlm` (git submodule, branch
 
 #### Describe a video, prompts, workflows (VLM tab, run by the manager)
 
+- **Video frames**: choose a library video (analysed in the Library) and its analysed
+  frames appear (a time range, every frame or fewer); click one or several (shift-click:
+  a span, at most 16), choose the **VLM model** (the loaded one, the module's catalogue or
+  any model id: the manager loads it first) and a prompt, and ask. The manager reads the
+  chosen pictures from the picture store and sends them in time order; `{{input}}` becomes
+  “3 frames of class.mp4 (at 2.00 s, 2.40 s, 3.10 s)”. API: `POST /api/vlm/ask` with
+  `{"frames": {"video_id", "indices"}, "model", "prompts"}`.
+
 The VLM looks at pictures, so a video is **sampled**: the manager takes 1 to 16 frames
 spread evenly over the chosen part of a library video (ffmpeg) and sends them as a
 sequence, with the prompt, to the VLM module.
@@ -571,7 +606,7 @@ manager/api/app/            hub (FastAPI)
                             adjustments, videos (library, cutting), vlm (prompts), flows (AI workflows,
                             runs), agents
   modules/                  module registry and launchers (Docker, local process)
-  media/                    ffmpeg helpers, video library, cutting
+  media/                    ffmpeg helpers, video library, cutting, video analysis, picture store
   vlm/                      VLM client, frames of a video, prompts, conditions, templating
   agents/                   LangChain: capabilities, tools, VlmChatModel, agent loop (native / ReAct)
   flows/                    AI workflows: catalog, node executors, graph, LangGraph engine

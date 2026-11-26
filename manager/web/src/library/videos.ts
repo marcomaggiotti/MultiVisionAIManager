@@ -35,6 +35,8 @@ export type StoredAnalysis = {
   video_id: string;
   media_key: string;
   fps: number;
+  /** This analysis' pictures (each analysis has its own, so their URLs can be cached). */
+  run: string;
   frames: (FrameResult & { index: number; source_time: number })[];
   events: PoseEvent[];
   comments: Comment[];
@@ -44,7 +46,8 @@ export type StoredAnalysis = {
 export const listVideos = () => api<LibraryVideo[]>("/api/videos");
 export const getVideo = (id: string) => api<LibraryVideo>(`/api/videos/${id}`);
 export const fetchAnalysis = (id: string) => api<StoredAnalysis>(`/api/videos/${id}/analysis`);
-export const analysedFrameUrl = (videoId: string, index: number) => `/api/videos/${videoId}/analysis/frames/${index}.jpg`;
+export const analysedFrameUrl = (videoId: string, run: string, index: number) =>
+  `/api/videos/${videoId}/analysis/frames/${encodeURIComponent(run)}/${index}.jpg`;
 export const analyseAgain = (id: string) => api<LibraryVideo>(`/api/videos/${id}/analysis`, json("POST", {}));
 export const isAnalysing = (video: LibraryVideo) => video.analysis?.status === "queued" || video.analysis?.status === "running";
 /** "analysed", "analysing 42 %", "waiting", "analysis failed" or "not analysed". */

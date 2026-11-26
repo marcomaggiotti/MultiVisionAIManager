@@ -35,11 +35,19 @@ services:
     restart: unless-stopped
 
   manager-api:
-    build: ./manager/api
+    build:
+      context: ./manager/api
+      args:
+        # optional extras: "azure" for the picture store in Azure Blob Storage
+        PIP_EXTRAS: ${MANAGER_PIP_EXTRAS:-}
     environment:
       MANAGER_REGISTRY: /config/modules.json
       MANAGER_DOCKER_SOCKET: /var/run/docker.sock
       MANAGER_COMPOSE_PROJECT: multivision
+      # analysed frames' pictures: "database" (SQLite in the manager-data volume) or "azure"
+      MANAGER_PICTURE_STORE: ${MANAGER_PICTURE_STORE:-database}
+      MANAGER_AZURE_STORAGE_CONNECTION_STRING: ${MANAGER_AZURE_STORAGE_CONNECTION_STRING:-}
+      MANAGER_AZURE_STORAGE_CONTAINER: ${MANAGER_AZURE_STORAGE_CONTAINER:-multivision-pictures}
     volumes:
       - manager-data:/data
       - ./modules.json:/config/modules.json:ro

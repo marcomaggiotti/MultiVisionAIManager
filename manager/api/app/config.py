@@ -25,6 +25,13 @@ class Settings(BaseSettings):
     max_frames: int = Field(16, gt=0)
     # Analyse every library video in the background when it is added (YOLO pose on each frame).
     analyse_videos: bool = True
+    # Where the analysed frames' pictures (and the analyses) are kept: "database" (SQLite,
+    # <data>/pictures.sqlite3 unless picture_database is set) or "azure" (Blob Storage,
+    # needs pip install .[azure]). Move them with: python -m app.media.picture_store migrate
+    picture_store: str = "database"
+    picture_database: str | None = None
+    azure_storage_connection_string: str | None = None
+    azure_storage_container: str = "multivision-pictures"
     # Cloud chat models agents may use, besides the local VLM module, e.g.
     # "anthropic:<model>,openai:<model>" (needs pip install .[providers] and the API key).
     agent_models: str = ""

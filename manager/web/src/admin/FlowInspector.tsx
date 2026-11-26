@@ -2,7 +2,8 @@ import { Check, Field, Slider } from "../components/ui";
 import { ConditionEditor, OutgoingEdges, VariableChips } from "../vlm/WorkflowInspector";
 import { Selection, removeSelection } from "../vlm/WorkflowCanvas";
 import { Graph, GraphNode, Prompt, describeCondition } from "../vlm/types";
-import { Catalog, FieldSpec, VlmModels, flowVariables, shortModel } from "./catalog";
+import { Catalog, FieldSpec, VlmModels, flowVariables } from "./catalog";
+import { VlmModelSelect } from "../vlm/VlmModelSelect";
 
 /** One field of a node, drawn from its catalog description. */
 function FieldInput({ field, value, onChange, catalog, prompts, variables, vlmModels }: {
@@ -84,32 +85,8 @@ function FieldInput({ field, value, onChange, catalog, prompts, variables, vlmMo
           </select>
         </Field>
       );
-    case "vlm_model": {
-      const known = vlmModels?.catalog ?? [];
-      const chosen = String(value ?? "");
-      const other = chosen && !known.some((model) => model.id === chosen);
-      const loaded = vlmModels?.active ? shortModel(vlmModels.active) : null;
-      return (
-        <Field label={field.label} help={vlmModels?.running ? field.help : "The VLM module is stopped: its models are listed once it runs. You can still type a model id."}>
-          <select value={other ? "__other" : chosen} onChange={(event) => {
-            if (event.target.value === "__other") return;
-            if (event.target.value !== "__type") return onChange(event.target.value);
-            const typed = window.prompt("Hugging Face model id of the VLM", chosen || "HuggingFaceTB/SmolVLM-500M-Instruct");
-            if (typed?.trim()) onChange(typed.trim());
-          }}>
-            <option value="">Loaded model{loaded ? ` (${loaded})` : ""}</option>
-            {known.map((model) => (
-              <option key={model.id} value={model.id}>
-                {shortModel(model.id)}{model.params_b ? ` · ${model.params_b} B` : ""}{model.id === vlmModels?.active ? " · loaded" : ""}
-              </option>
-            ))}
-            {other && <option value="__other">{shortModel(chosen)}</option>}
-            <option value="__type">Other model id…</option>
-          </select>
-          {chosen && chosen !== vlmModels?.active && <span className="small muted">Loaded before this node asks (switching takes a moment).</span>}
-        </Field>
-      );
-    }
+    case "vlm_model":
+      return <VlmModelSelect value={String(value ?? "")} onChange={onChange} models={vlmModels} label={field.label} help={field.help} />;
     case "choices":
       return (
         <Field label={field.label} help={field.help}>
