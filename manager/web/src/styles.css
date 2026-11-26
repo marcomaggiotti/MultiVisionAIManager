@@ -439,3 +439,21 @@ pre.architecture { font-size: 11px; line-height: 1.45; overflow-x: auto; backgro
 .prompt-item-text { display: flex; flex-direction: column; min-width: 0; cursor: pointer; }
 .prompt-item-text .small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .prompt-item-actions { display: flex; gap: 2px; }
+
+/* ---- VLM: agent systems, drawn like an agent framework's graph ---- */
+.agent-diagram { width: 100%; max-height: 360px; margin: 10px 0; background: #2b2b2e; border-radius: 12px; font-family: ui-monospace, "Cascadia Mono", Menlo, monospace; }
+.agent-box { fill: none; stroke: #e8e8e8; stroke-width: 1.6; }
+.agent-box-title { fill: #ececec; font-size: 15px; }
+.agent-flow, .agent-tool-link { stroke: #cfcfcf; stroke-width: 1.4; }
+.agent-arrow-head { fill: #cfcfcf; }
+.agent-node { cursor: pointer; }
+.agent-node ellipse { fill: #2b2b2e; stroke: #e8e8e8; stroke-width: 1.6; }
+.agent-node .agent-name { fill: #f2f2f2; font-size: 14px; }
+.agent-node.selected ellipse { stroke: #8fb8ff; stroke-width: 2.4; }
+.agent-node.active ellipse { fill: #145a24; stroke: #145a24; animation: agent-pulse 1.2s ease-in-out infinite; }
+.agent-node.done ellipse { fill: #1c3b25; }
+.agent-node.failed ellipse { fill: #5a1a20; }
+.agent-tool rect { fill: #2b2b2e; stroke: #e8e8e8; stroke-width: 1.4; }
+.agent-tool text { fill: #f2f2f2; font-size: 13px; }
+.agent-tool.called rect { fill: #1d3d6b; stroke: #8fb8ff; }
+@keyframes agent-pulse { 50% { opacity: .75; } }

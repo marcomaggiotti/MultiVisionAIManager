@@ -27,6 +27,7 @@ from fastapi import FastAPI
 from app.agents.capabilities import Services
 from app.api import (
     adjustments,
+    agent_systems,
     agents,
     analysis,
     compare,
@@ -98,6 +99,7 @@ def create_app(
         app.state.prompts = DocumentStore(app.state.store.database_path, "prompt")
         app.state.workflows = DocumentStore(app.state.store.database_path, "workflow")
         app.state.pipelines = DocumentStore(app.state.store.database_path, "pipeline")
+        app.state.agent_systems = DocumentStore(app.state.store.database_path, "agent_system")
         app.state.vlm = VlmClient(app.state.registry, http_client, settings.proxy_timeout, app.state.recorder)
         app.state.flows = DocumentStore(app.state.store.database_path, "flow")
         app.state.services = Services(
@@ -137,6 +139,7 @@ def create_app(
     app = FastAPI(title="MultiVision AI Manager", version=manager_version(), lifespan=lifespan)
     for router_module in (
         knowledge,
+        agent_systems,
         modules,
         live,
         compare,

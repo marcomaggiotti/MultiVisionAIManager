@@ -11,6 +11,7 @@ import { SnapshotPickerButton } from "../library/SnapshotPicker";
 import { useVideoSentTo } from "../library/videos";
 import { FramesAsk } from "../vlm/FramesAsk";
 import { PipelinesStudio } from "../vlm/PipelinesStudio";
+import { AgentsStudio } from "../vlm/AgentsStudio";
 import { DescribeVideo } from "../vlm/DescribeVideo";
 import { videoInput } from "../vlm/InputChooser";
 import { PromptsStudio } from "../vlm/PromptsStudio";
@@ -18,7 +19,7 @@ import { WorkflowStudio } from "../vlm/WorkflowStudio";
 import { VlmInput, Workflow, listPrompts } from "../vlm/types";
 
 const V = (p: string) => mod("vlm", p);
-type Tab = "frames" | "video" | "prompts" | "pipelines" | "workflow" | "models" | "chat" | "decoding" | "inspect" | "datasets" | "tuning" | "evaluation";
+type Tab = "frames" | "video" | "prompts" | "pipelines" | "agents" | "workflow" | "models" | "chat" | "decoding" | "inspect" | "datasets" | "tuning" | "evaluation";
 type Params = Record<string, number | boolean>;
 
 export default function VlmStudio() {
@@ -32,7 +33,7 @@ export default function VlmStudio() {
   const [incomingWorkflow, setIncomingWorkflow] = useState<Workflow | null>(null);
   return (
     <Page title="VLM · vision-language models" subtitle="Transformer language models, tokenization, attention, decoding, instruction tuning, image encoders, cross-attention vs projected tokens, multimodal alignment, evaluation.">
-      <Tabs value={tab} onChange={setTab} tabs={[["frames", "Video frames"], ["video", "Describe a video"], ["prompts", "Prompts"], ["pipelines", "Pipelines"], ["workflow", "Workflow"], ["models", "Models"], ["chat", "Ask"], ["decoding", "Decoding comparison"], ["inspect", "Tokens & attention"], ["datasets", "Instruction data"], ["tuning", "Instruction tuning"], ["evaluation", "Evaluation"]]} />
+      <Tabs value={tab} onChange={setTab} tabs={[["frames", "Video frames"], ["video", "Describe a video"], ["prompts", "Prompts"], ["pipelines", "Pipelines"], ["agents", "Agents"], ["workflow", "Workflow"], ["models", "Models"], ["chat", "Ask"], ["decoding", "Decoding comparison"], ["inspect", "Tokens & attention"], ["datasets", "Instruction data"], ["tuning", "Instruction tuning"], ["evaluation", "Evaluation"]]} />
       {tab === "frames" && (
         <FramesAsk prompts={prompts.data ?? []} frames={input?.kind === "frames" ? input : null}
           onFrames={(frames) => setInput(frames ? { kind: "frames", ...frames } : null)} />
@@ -46,6 +47,7 @@ export default function VlmStudio() {
         <PipelinesStudio input={input} onInput={setInput} prompts={prompts.data ?? []}
           onOpenWorkflow={(graph, name) => { setIncomingWorkflow({ name, description: "", graph }); setTab("workflow"); }} />
       )}
+      {tab === "agents" && <AgentsStudio input={input} onInput={setInput} />}
       {tab === "workflow" && (
         <WorkflowStudio input={input} onInput={setInput} prompts={prompts.data ?? []} incoming={incomingWorkflow} onIncomingTaken={() => setIncomingWorkflow(null)} />
       )}

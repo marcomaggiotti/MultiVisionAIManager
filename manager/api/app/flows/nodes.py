@@ -11,6 +11,7 @@ import asyncio
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.types import interrupt
 
 from app.agents.capabilities import Capabilities, CapabilityError
@@ -173,10 +174,19 @@ async def run_agent_node(call: NodeCall) -> NodeOutcome:
     call.step.prompt = goal
     model_id = settings["model"] or "vlm"
     model = create_chat_model(
-        model_id, capabilities.services.vlm, capabilities.pictures.jpegs, bool(settings["show_pictures"])
+        model_id,
+        capabilities.services.vlm,
+        capabilities.pictures.jpegs,
+        bool(settings["show_pictures"]),
+        settings.get("vlm_model") or None,
     )
-    tools = build_tools(capabilities, settings["tools"] or None)
+    chosen_tools = settings["tools"]
+    tools = build_tools(capabilities, None if chosen_tools is None else list(chosen_tools))  # [] = no tool
     context = "\n".join(part for part in (capabilities.overview(), _results_so_far(call.variables)) if part)
+    if not tools:  # nothing to call: the model answers directly (small VLMs follow no protocol)
+        reply = await model.ainvoke([SystemMessage(context), HumanMessage(goal)] if context else [HumanMessage(goal)])
+        call.step.details.append({"kind": "answer", "text": "answered directly (no tool)"})
+        return _answer(call, str(reply.content).strip())
     result = await run_agent(
         model,
         tools,

@@ -486,6 +486,18 @@ sequence, with the prompt, to the VLM module.
   player's position) and the number of frames, preview the frames, and describe it with
   the default ballet prompt or a saved one. `{{input}}` in a prompt becomes "8 frames of
   class.mp4 from 2.0 s to 6.0 s".
+- **Agents**: agent systems in the style of agent frameworks: a **sequential agent** whose
+  agents run one after the other, drawn as a graph (a box “name (Sequential Agent)”, each
+  agent an ellipse, arrows in the order they run, each tool a rounded box; while it runs
+  the active agent turns green, finished agents are ticked and the tools called light up).
+  Each agent has a name (its answer is `{{name}}` for the next ones), a role, an
+  instruction, a model (the local VLM, one of its models, or a configured cloud model),
+  tools (pose, ballet rules, CLIP, movement definitions…; none: it answers directly) and
+  sees the frames or not. Templates: **VLM auditor** (`describer_agent` describes the
+  frames → `critic_agent` checks every claim with the tools → `reviser_agent` rewrites
+  the description) and **Coach team** (measure → explain → plan exercises). Saved
+  (`/api/agent-systems`), run on a video, chosen frames or pictures as a straight AI
+  workflow of agent nodes.
 - **Pipelines**: prompts asked one after the other, saved by name. Each step is a saved
   prompt or its own text, asked to its own **VLM model**, with or without the pictures
   (a text-only step can summarise the earlier answers); each answer is `{{step1}}`,
