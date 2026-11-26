@@ -36,6 +36,7 @@ from app.api import (
     live,
     modules,
     snapshots,
+    video_comparisons,
     videos,
     vlm,
 )
@@ -103,6 +104,8 @@ def create_app(
         )
         app.state.flow_runner = FlowRunner(app.state.services, app.state.prompts)
         app.state.live_sessions = {}
+        app.state.comparison_jobs = {}
+        app.state.background_jobs = set()  # keeps the comparison renders' tasks alive
 
         async def analyse_frame(jpeg: bytes, session: LiveSession, source_time: float, confidence: float) -> dict:
             yolo_url = await running_yolo_url(app.state.registry)
@@ -140,6 +143,7 @@ def create_app(
         adjustments,
         videos,
         snapshots,
+        video_comparisons,
         vlm,
         flows,
         agents,

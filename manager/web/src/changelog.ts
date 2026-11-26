@@ -4,6 +4,15 @@ export type Release = { version: string; date: string; title: string; changes: s
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.27.0", date: "2026-11-26", title: "Compare library videos: reference and performances",
+    changes: [
+      "Compare → Library videos: tick the reference (the instruction video to follow, by default the oldest) and one or more performances among the analysed videos.",
+      "The newest performance is shown with every other dancer's skeleton over it, the reference's in gold; each is aligned on the dancer's torso, and an offset per video lines up the starts.",
+      "Match score with the reference for every performance: at each frame, on average, and as a chart over time (click to go there); left / right mirroring is detected.",
+      "🎬 Make the comparison video: an MP4 of the newest performance with all the skeletons, names and scores, saved in the Library.",
+    ],
+  },
+  {
     version: "0.26.1", date: "2026-11-26", title: "VLM: remove a chosen frame",
     changes: [
       "VLM → Video frames: each chosen frame in the strip next to the question has a ✕ to leave it out (the grid and the count follow).",
