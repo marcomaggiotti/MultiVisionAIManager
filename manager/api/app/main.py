@@ -49,6 +49,7 @@ from app.flows.engine import FlowRunner
 from app.history.recorder import UsageRecorder
 from app.history.store import UsageHistory
 from app.live import LiveSession, process_frame
+from app.media.annotated_video import CaptionStore
 from app.media.keypoint_tracks import KeypointTrackStore
 from app.media.library import VideoLibrary
 from app.media.picture_store import create_picture_store
@@ -122,6 +123,7 @@ def create_app(
             settings.azure_storage_connection_string, settings.azure_storage_container,
         )  # fmt: skip
         app.state.video_notes = VideoNotes(app.state.store.database_path)
+        app.state.video_captions = CaptionStore(app.state.store.database_path)
         app.state.video_audio = VideoAudio(
             app.state.store.database_path, app.state.library, app.state.pictures, app.state.registry, http_client
         )

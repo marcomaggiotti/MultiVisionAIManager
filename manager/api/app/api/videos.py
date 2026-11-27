@@ -123,6 +123,7 @@ def delete_video(video_id: str, library: Library, request: Request) -> Response:
     library.delete(video_id)
     get_analyses(request).forget(video_id)
     request.app.state.video_notes.delete_video(video_id)
+    request.app.state.video_captions.delete(video_id)
     request.app.state.video_audio.forget(video_id)
     shutil.rmtree(library.folder.parent / "frame-cache" / Path(video_id).name, ignore_errors=True)
     return Response(status_code=204)

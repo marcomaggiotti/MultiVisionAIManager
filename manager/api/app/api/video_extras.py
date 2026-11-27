@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import uuid
+from pathlib import Path
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Query, Request, Response
@@ -10,7 +13,9 @@ from pydantic import BaseModel, Field
 
 from app.api.dependencies import Library
 from app.ballet.limb_motion import DEFAULT_MIN_DURATION, DEFAULT_THRESHOLD, analyse_limbs
+from app.media import annotated_video
 from app.media.video_audio import AGENTS, GOALS, AudioError, VideoAudio
+from app.media.video_comparison import temporary_target
 from app.media.video_notes import MAX_NOTE_CHARACTERS, VideoNotes
 from app.storage import RecordNotFoundError
 
@@ -61,6 +66,111 @@ def limb_movements(
     if stored is None:
         raise RecordNotFoundError(f"video {video_id!r} is not analysed yet")
     return analyse_limbs(json.loads(stored), threshold, min_duration)
+
+
+# --- captions and the annotated video ------------------------------------------------------
+class Caption(BaseModel):
+    start: float = Field(ge=0)
+    end: float = Field(ge=0)
+    text: str = Field(max_length=500)
+    limbs: list[str] = Field(default_factory=list)
+
+
+class CaptionTrack(BaseModel):
+    anticipation: float = Field(annotated_video.DEFAULT_ANTICIPATION, ge=0, le=10, description="Seconds shown before")
+    threshold: float = Field(DEFAULT_THRESHOLD, gt=0, le=10)
+    captions: list[Caption] = Field(default_factory=list, max_length=2000)
+
+
+def _stored_analysis(video_id: str, request: Request) -> dict:
+    stored = request.app.state.video_analyses.result_bytes(video_id)
+    if stored is None:
+        raise RecordNotFoundError(f"video {video_id!r} is not analysed yet")
+    return json.loads(stored)
+
+
+@router.get("/api/videos/{video_id}/captions")
+def captions(
+    video_id: str,
+    library: Library,
+    request: Request,
+    threshold: Annotated[float, Query(gt=0, le=10)] = DEFAULT_THRESHOLD,
+) -> dict:
+    """The caption track: the one saved (edited), else one proposed per movement found."""
+    library.get(video_id)
+    saved = request.app.state.video_captions.get(video_id)
+    if saved is not None:
+        return {**saved, "saved": True}
+    limbs = analyse_limbs(_stored_analysis(video_id, request), threshold)
+    proposed = annotated_video.proposed_captions(limbs["moments"])
+    return {
+        "anticipation": annotated_video.DEFAULT_ANTICIPATION,
+        "threshold": threshold,
+        "captions": proposed,
+        "saved": False,
+    }
+
+
+@router.put("/api/videos/{video_id}/captions")
+def save_captions(video_id: str, track: CaptionTrack, library: Library, request: Request) -> dict:
+    """Keep the edited captions (texts changed, captions removed) with the video."""
+    library.get(video_id)
+    data = track.model_dump()
+    data["captions"] = sorted(
+        (caption for caption in data["captions"] if caption["text"].strip()), key=lambda c: c["start"]
+    )
+    return {**request.app.state.video_captions.save(video_id, data), "saved": True}
+
+
+@router.delete("/api/videos/{video_id}/captions", status_code=204)
+def reset_captions(video_id: str, library: Library, request: Request) -> Response:
+    """Forget the edits: the captions are proposed again from the movements found."""
+    library.get(video_id)
+    request.app.state.video_captions.delete(video_id)
+    return Response(status_code=204)
+
+
+@router.post("/api/videos/{video_id}/annotated-video", status_code=202)
+async def export_annotated_video(video_id: str, track: CaptionTrack, library: Library, request: Request) -> dict:
+    """Make the annotated video (skeleton, moving limbs, captions, the video's sound): an MP4
+    added to the library. Follow it with ``GET /api/render-jobs/{id}``."""
+    video = library.get(video_id)
+    analysis = _stored_analysis(video_id, request)
+    limbs = analyse_limbs(analysis, track.threshold)
+    captions_shown = [caption.model_dump() for caption in track.captions if caption.text.strip()]
+    analyses = request.app.state.video_analyses
+    job = {"id": uuid.uuid4().hex[:12], "status": "running", "progress": 0.0, "video": None, "error": None}
+    request.app.state.comparison_jobs[job["id"]] = job
+
+    async def run() -> None:
+        folder, target = temporary_target()
+        try:
+            await annotated_video.render_annotated_video(
+                analysis, limbs, captions_shown, track.anticipation,
+                lambda index: analyses.frame(video.id, analysis["run"], index),
+                library.file_path(video.id), target, lambda share: job.update(progress=round(min(share, 0.99), 3)),
+            )  # fmt: skip
+            name = f"{Path(video.name).stem}-annotated.mp4"
+            made = await library.add(target, name, annotated_video.ANNOTATED_ORIGIN, video.id)
+            job.update(status="done", progress=1.0, video=made.to_api())
+        except Exception as error:  # noqa: BLE001 - shown in the page
+            job.update(status="failed", error=f"{type(error).__name__}: {error}")
+        finally:
+            folder.cleanup()
+
+    task = asyncio.get_running_loop().create_task(run())
+    request.app.state.background_jobs.add(task)
+    task.add_done_callback(request.app.state.background_jobs.discard)
+    return job
+
+
+@router.get("/api/render-jobs/{job_id}")
+def render_job(job_id: str, request: Request) -> dict:
+    """A video being made (comparison or annotated video): progress, then the library video."""
+    job = request.app.state.comparison_jobs.get(job_id)
+    if job is None:
+        raise RecordNotFoundError(f"no render job {job_id!r}")
+    return job
 
 
 # --- audio ------------------------------------------------------------------------------
