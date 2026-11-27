@@ -3,6 +3,8 @@ import { api, json } from "../api";
 import { ErrorBox, Slider } from "../components/ui";
 import { LibraryVideo } from "../library/videos";
 import { Recorded, fmtTime } from "./types";
+import { Point, dancerBox, drawCat } from "./cat";
+import { Karaoke } from "./Karaoke";
 
 type LimbInfo = { id: string; label: string; color: string; bones: [number, number][] };
 type Movement = { limb: string; start: number; end: number; peak: number; mean: number; movement: string | null };
@@ -51,6 +53,8 @@ export function LimbMovements({ video, frames, onTime, onClose }: {
   const [index, setIndex] = useState(0);
   const [armed, setArmed] = useState<{ caption: Caption; queue: Caption[] } | null>(null);
   const [job, setJob] = useState<RenderJob | null>(null);
+  const [character, setCharacter] = useState<"skeleton" | "cat">("skeleton"); // what is drawn on the dancer
+  const [hideDancer, setHideDancer] = useState(true); // with the cat: the dancer is blurred out behind it
   const player = useRef<HTMLVideoElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const armedRef = useRef(armed);
@@ -137,6 +141,20 @@ export function LimbMovements({ video, frames, onTime, onClose }: {
       context.shadowBlur = glow ? 14 : 0;
       context.beginPath(); context.moveTo(x1, y1); context.lineTo(x2, y2); context.stroke();
     };
+    if (character === "cat") {
+      const points = found.points.map((_, point) => at2d(point) as Point);
+      const box = hideDancer ? dancerBox(points, seen, Math.min(width, height) * 0.05) : null;
+      if (box) { // the dancer, blurred out: the cat takes her place
+        context.save();
+        context.beginPath(); context.roundRect(box[0], box[1], box[2] - box[0], box[3] - box[1], 24); context.clip();
+        context.filter = "blur(16px)";
+        context.drawImage(element, left, top, element.videoWidth * scale, element.videoHeight * scale);
+        context.restore();
+      }
+      const lit = data.limbs.filter((limb) => moving(at, limb.id)).map((limb) => ({ id: limb.id, color: limb.color }));
+      drawCat(context, points, seen, element.currentTime, lit);
+      return;
+    }
     SKELETON.forEach(([a, b]) => bone(a, b, "rgba(220, 226, 240, 0.55)", 1, false));
     for (const limb of data.limbs) {
       if (!moving(at, limb.id)) continue;
@@ -150,7 +168,7 @@ export function LimbMovements({ video, frames, onTime, onClose }: {
       }
     }
     context.shadowBlur = 0;
-  }, [data, keypointsAt]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [data, keypointsAt, character, hideDancer]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // follow the video: draw, report the time, stop after a caption's movement (or go on to the next)
   const lastIndex = useRef(-1);
@@ -164,6 +182,8 @@ export function LimbMovements({ video, frames, onTime, onClose }: {
       setIndex(at);
       draw(at);
       onTime(data.times[at]);
+    } else if (character === "cat" && !element.paused) {
+      draw(at); // the tail sways and the eyes blink between frames
     }
     const current = armedRef.current;
     if (current && !element.paused && t >= current.caption.end + AFTER_SECONDS) {
@@ -176,7 +196,7 @@ export function LimbMovements({ video, frames, onTime, onClose }: {
         setArmed(null);
       }
     }
-  }, [data, draw, onTime, anticipation, stopAfter]);
+  }, [data, draw, onTime, anticipation, stopAfter, character]);
   useEffect(() => {
     let frame = 0;
     const loop = () => { tick(); frame = requestAnimationFrame(loop); };
@@ -205,7 +225,9 @@ export function LimbMovements({ video, frames, onTime, onClose }: {
     if (!track) return;
     setError(null);
     try {
-      let current = await api<RenderJob>(`/api/videos/${video.id}/annotated-video`, json("POST", { anticipation, threshold, captions: track.captions }));
+      let current = await api<RenderJob>(`/api/videos/${video.id}/annotated-video`, json("POST", {
+        anticipation, threshold, captions: track.captions, character, hide_dancer: character === "cat" && hideDancer,
+      }));
       setJob(current);
       while (current.status === "running") {
         await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -234,6 +256,11 @@ export function LimbMovements({ video, frames, onTime, onClose }: {
           <Slider label="Text announces the movement (s before)" value={anticipation} min={0} max={5} step={0.5}
             onChange={(value) => track && changeTrack({ ...track, anticipation: value })} />
         </div>
+        <div className="seg" role="group" aria-label="Drawn on the dancer">
+          <button className={character === "skeleton" ? "on" : ""} onClick={() => setCharacter("skeleton")}>🦴 Skeleton</button>
+          <button className={character === "cat" ? "on" : ""} onClick={() => setCharacter("cat")} title="A cartoon cat moving with the dancer">🐱 Cat</button>
+        </div>
+        {character === "cat" && <label className="small"><input type="checkbox" checked={hideDancer} onChange={(event) => setHideDancer(event.target.checked)} /> hide the dancer</label>}
         <label className="small"><input type="checkbox" checked={stopAfter} onChange={(event) => setStopAfter(event.target.checked)} /> stop after the movement</label>
         <button className="small" disabled={!captions.length} onClick={() => playFrom(captions[0], captions.slice(1))}>▶ Play every movement</button>
         <span style={{ flex: 1 }} />
@@ -252,11 +279,7 @@ export function LimbMovements({ video, frames, onTime, onClose }: {
           <video ref={player} src={video.url} controls playsInline preload="auto"
             onSeeked={() => { lastIndex.current = -1; tick(); }} onLoadedData={() => { lastIndex.current = -1; tick(); }} />
           <canvas ref={canvas} className="limb-overlay" />
-          {shownCaptions.length > 0 && (
-            <div className="limb-caption">
-              {shownCaptions.map((caption, position) => <div key={position}>{caption.text}</div>)}
-            </div>
-          )}
+          <Karaoke captions={shownCaptions} seconds={t} anticipation={anticipation} />
         </div>
 
         <div className="limb-list">

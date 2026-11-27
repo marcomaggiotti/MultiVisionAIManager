@@ -82,6 +82,11 @@ class CaptionTrack(BaseModel):
     captions: list[Caption] = Field(default_factory=list, max_length=2000)
 
 
+class ExportRequest(CaptionTrack):
+    character: Literal["skeleton", "cat"] = Field("skeleton", description="Drawn on the dancer")
+    hide_dancer: bool = Field(False, description="With the cat: blur the dancer out behind it")
+
+
 def _stored_analysis(video_id: str, request: Request) -> dict:
     stored = request.app.state.video_analyses.result_bytes(video_id)
     if stored is None:
@@ -131,7 +136,7 @@ def reset_captions(video_id: str, library: Library, request: Request) -> Respons
 
 
 @router.post("/api/videos/{video_id}/annotated-video", status_code=202)
-async def export_annotated_video(video_id: str, track: CaptionTrack, library: Library, request: Request) -> dict:
+async def export_annotated_video(video_id: str, track: ExportRequest, library: Library, request: Request) -> dict:
     """Make the annotated video (skeleton, moving limbs, captions, the video's sound): an MP4
     added to the library. Follow it with ``GET /api/render-jobs/{id}``."""
     video = library.get(video_id)
@@ -149,8 +154,9 @@ async def export_annotated_video(video_id: str, track: CaptionTrack, library: Li
                 analysis, limbs, captions_shown, track.anticipation,
                 lambda index: analyses.frame(video.id, analysis["run"], index),
                 library.file_path(video.id), target, lambda share: job.update(progress=round(min(share, 0.99), 3)),
+                track.character, track.hide_dancer,
             )  # fmt: skip
-            name = f"{Path(video.name).stem}-annotated.mp4"
+            name = f"{Path(video.name).stem}-{'cat' if track.character == 'cat' else 'annotated'}.mp4"
             made = await library.add(target, name, annotated_video.ANNOTATED_ORIGIN, video.id)
             job.update(status="done", progress=1.0, video=made.to_api())
         except Exception as error:  # noqa: BLE001 - shown in the page

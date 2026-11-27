@@ -4,6 +4,24 @@ export type Release = { version: string; date: string; title: string; changes: s
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.34.0", date: "2026-11-27", title: "🎤 Karaoke captions, always readable",
+    changes: [
+      "🎬 Preview and exported videos: the captions are a karaoke band at the bottom of the video, two lines tall, dark and opaque, with bold outlined text, readable on any picture.",
+      "The words light up in yellow one after the other, from when the caption appears (2 s before the movement) to the end of the movement; the word to follow now is underlined.",
+      "Long captions scroll up line by line, smoothly, so the current word is always in view; the band stays full on the last two lines.",
+      "The exported MP4 draws the same band with the same timing as the preview.",
+    ],
+  },
+  {
+    version: "0.33.0", date: "2026-11-27", title: "🐱 A cartoon cat in the dancer's place",
+    changes: [
+      "🎬 Preview: 🦴 Skeleton or 🐱 Cat. The cat is drawn on the dancer's keypoints and moves with her: round tabby body, striped legs and arms, paws, ears, blinking eyes, whiskers, a tail that sways (faster while she moves); moving limbs glow in their colour.",
+      "“hide the dancer” blurs her out behind the cat.",
+      "Exported with the cat: <name>-cat.mp4 in the Library (captions and sound included).",
+      "The studio's video list no longer shows the made videos (comparisons, annotated videos).",
+    ],
+  },
+  {
     version: "0.32.0", date: "2026-11-27", title: "Preview with captions, exported to the library",
     changes: [
       "Live studio: the limb movements are now a 🎬 Preview (the button after Snapshot, Adjust keypoints, Note): the video in a large window, the moving limbs lit up.",

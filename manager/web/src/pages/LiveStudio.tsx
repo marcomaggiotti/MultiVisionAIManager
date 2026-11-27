@@ -271,7 +271,7 @@ export default function LiveStudio() {
             onChange={(event) => chooseVideo(event.target.value)} style={{ width: "auto", maxWidth: 280 }}
             title="Videos are added (and analysed) in the Library tab; choosing one plays its analysis">
             <option value="">{opening ? "Opening…" : "🎞 Choose a video…"}</option>
-            {(library.data ?? []).map((video) => (
+            {(library.data ?? []).filter((video) => video.source !== "comparison" && video.source !== "annotated").map((video) => (
               <option key={video.id} value={video.id} disabled={video.analysis?.status !== "done"}>
                 {video.analysis?.status === "done" ? "✓ " : "⏳ "}{video.name} · {formatDuration(video.duration)}
                 {video.analysis?.status !== "done" ? ` (${analysisLabel(video)})` : ""}

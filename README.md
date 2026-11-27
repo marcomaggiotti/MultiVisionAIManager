@@ -62,10 +62,19 @@ persist are written to the feedback log, with the time, so you can jump back to 
   keypoints, so a dancer crossing the floor or YOLO's jitter does not count as a limb moving
   ([`limb_motion.py`](manager/api/app/ballet/limb_motion.py)). A **caption at the bottom of
   the video announces each movement 2 s before it starts** (adjustable) and stays until it
-  ends. The captions are proposed from the movements found (limbs moving together form one)
+  ends, **shown like karaoke**: a two-line opaque band whose words light up one after the
+  other until the movement ends, long captions scrolling up so the current word stays in view
+  ([`Karaoke.tsx`](manager/web/src/live/Karaoke.tsx) in the preview, `draw_karaoke` in
+  [`annotated_video.py`](manager/api/app/media/annotated_video.py) in the export, same timing).
+  The captions are proposed from the movements found (limbs moving together form one)
   and can be **rewritten or removed**: the edited track is saved with the video
   (*↺ Propose again* forgets the edits). Click a caption to play it from the same time before;
   *Play every movement* chains them; one lane per limb shows when it moves.
+  **🐱 Cat** replaces the skeleton with a cartoon cat drawn on the keypoints (round tabby body,
+  striped legs and arms, paws, head with ears, blinking eyes and whiskers, a tail swaying
+  faster while the dancer moves; moving limbs glow in their colour); *hide the dancer* blurs
+  her out behind it ([`cat.ts`](manager/web/src/live/cat.ts) in the preview,
+  [`cat.py`](manager/api/app/media/cat.py) in the export).
   **⬇ Export to the library** makes an MP4 of the analysed pictures with the skeleton, the
   moving limbs, the captions and the video's sound (`<name>-annotated.mp4`, not analysed
   again). API: `GET /api/videos/{id}/limb-movements`, `GET/PUT/DELETE /api/videos/{id}/captions`,

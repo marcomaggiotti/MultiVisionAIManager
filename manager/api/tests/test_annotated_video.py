@@ -2,11 +2,22 @@
 
 from __future__ import annotations
 
+import io
 import json
 import subprocess
 import time
 
-from app.media.annotated_video import active_captions, caption_text
+from PIL import Image
+
+from app.media.annotated_video import (
+    SCROLL_SECONDS,
+    _karaoke_words,
+    active_captions,
+    caption_progress,
+    caption_text,
+    draw_annotated_frame,
+    karaoke_scroll,
+)
 from tests.test_manager import ARABESQUE
 from tests.test_video_analysis import wait_until_analysed
 from tests.test_video_extras import make_video, needs_ffmpeg, upload
@@ -57,5 +68,43 @@ def test_captions_are_edited_and_the_annotated_video_is_made(make_client, tmp_pa
         streams = subprocess.run(probe, capture_output=True, text=True, check=True).stdout
         assert sorted(stream["codec_type"] for stream in json.loads(streams)["streams"]) == ["audio", "video"]
 
+        # the cartoon cat in the dancer's place
+        job = client.post(
+            f"/api/videos/{video['id']}/annotated-video", json={**saved, "character": "cat", "hide_dancer": True}
+        ).json()
+        deadline = time.monotonic() + 60
+        while job["status"] == "running" and time.monotonic() < deadline:
+            time.sleep(0.1)
+            job = client.get(f"/api/render-jobs/{job['id']}").json()
+        assert job["status"] == "done", job
+        assert job["video"]["name"] == "class-cat.mp4" and job["video"]["source"] == "annotated"
+
         assert client.delete(url).status_code == 204
         assert client.get(url).json()["saved"] is False
+
+
+def test_karaoke_words_light_up_and_the_band_scrolls():
+    caption = {"start": 4.0, "end": 6.0, "text": "one two three four"}  # shown from 2 s, sung by 6 s
+    assert caption_progress(caption, 2.0, 2.0) == 0 and caption_progress(caption, 4.0, 2.0) == 0.5
+    assert caption_progress(caption, 9.0, 2.0) == 1
+    words = _karaoke_words([caption], 4.0, 2.0)
+    assert [word["sung"] for word in words] == [True, True, False, False]
+    # one word per line: the current word's line comes to the top of the band
+    lines = [[0], [1], [2], [3]]
+    assert karaoke_scroll(words, lines, 4.0) == (2, 1.0)  # "three": line 2, reached at 4 s, scrolling…
+    assert karaoke_scroll(words, lines, 4.0 + SCROLL_SECONDS + 0.01) == (2, 2.0)  # …and arrived
+    assert karaoke_scroll(_karaoke_words([caption], 6.0, 2.0), lines, 6.0)[0] == 3  # all sung: stays on the last
+
+
+def test_karaoke_band_is_drawn_at_the_bottom():
+    picture = Image.new("RGB", (320, 240), "#4080c0")
+    buffer = io.BytesIO()
+    picture.save(buffer, format="JPEG")
+    long = {"start": 3.0, "end": 5.0, "text": "Lift the right leg slowly into a high arabesque then hold it there"}
+    drawn = Image.open(io.BytesIO(draw_annotated_frame(buffer.getvalue(), {}, [], [long], 4.0, anticipation=2.0)))
+    top, bottom = drawn.crop((0, 0, 320, 120)), drawn.crop((0, 150, 320, 240))
+    assert max(top.convert("L").getextrema()) - min(top.convert("L").getextrema()) < 30  # untouched
+    colors = set(bottom.convert("RGB").getcolors(320 * 90) or [])
+    colors = {color for _, color in colors}
+    assert any(r > 200 and g > 170 and b < 120 for r, g, b in colors)  # yellow: words sung
+    assert any(r > 220 and g > 220 and b > 220 for r, g, b in colors)  # white: words to come
