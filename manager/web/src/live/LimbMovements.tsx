@@ -4,6 +4,7 @@ import { ErrorBox, Slider } from "../components/ui";
 import { LibraryVideo } from "../library/videos";
 import { Recorded, fmtTime } from "./types";
 import { Point, dancerBox, drawCat } from "./cat";
+import { Karaoke } from "./Karaoke";
 
 type LimbInfo = { id: string; label: string; color: string; bones: [number, number][] };
 type Movement = { limb: string; start: number; end: number; peak: number; mean: number; movement: string | null };
@@ -278,11 +279,7 @@ export function LimbMovements({ video, frames, onTime, onClose }: {
           <video ref={player} src={video.url} controls playsInline preload="auto"
             onSeeked={() => { lastIndex.current = -1; tick(); }} onLoadedData={() => { lastIndex.current = -1; tick(); }} />
           <canvas ref={canvas} className="limb-overlay" />
-          {shownCaptions.length > 0 && (
-            <div className="limb-caption">
-              {shownCaptions.map((caption, position) => <div key={position}>{caption.text}</div>)}
-            </div>
-          )}
+          <Karaoke captions={shownCaptions} seconds={t} anticipation={anticipation} />
         </div>
 
         <div className="limb-list">
