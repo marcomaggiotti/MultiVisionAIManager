@@ -70,6 +70,8 @@ persist are written to the feedback log, with the time, so you can jump back to 
   and can be **rewritten or removed**: the edited track is saved with the video
   (*↺ Propose again* forgets the edits). Click a caption to play it from the same time before;
   *Play every movement* chains them; one lane per limb shows when it moves.
+  **⛶ Full screen** (or a double-click) shows the whole preview, captions and drawings
+  included (the video's own full screen, which would show the bare video, is turned off).
   **🐱 Cat** replaces the skeleton with a cartoon cat drawn on the keypoints (striped tabby,
   paws, head with ears, blinking eyes and whiskers, a tail swaying faster while the dancer
   moves; moving limbs glow in their colour); *hide the dancer* blurs her out behind it. The

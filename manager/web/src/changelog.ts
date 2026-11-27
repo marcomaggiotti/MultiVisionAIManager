@@ -4,6 +4,14 @@ export type Release = { version: string; date: string; title: string; changes: s
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.35.1", date: "2026-11-27", title: "Full screen keeps the karaoke and the cat",
+    changes: [
+      "🎬 Preview: the ⛶ button (top right of the video, or a double-click) puts the whole preview in full screen: the video with the cat or skeleton and the karaoke captions, larger. ✕ or Esc leaves it.",
+      "The video's own full-screen button, which showed the bare video without the captions, is turned off; a full screen of the bare video (a browser shortcut) is turned into the preview's.",
+      "Esc in full screen only leaves full screen; it no longer closes the preview.",
+    ],
+  },
+  {
     version: "0.35.0", date: "2026-11-27", title: "🐱 A rounder cat that stays on the dancer",
     changes: [
       "The cat stays on the keypoints: YOLO's jitter is removed (a centred average over the frames around, so no lag), keypoints missed for under 0.5 s are filled in, and the preview follows the video between two analysed frames instead of jumping.",

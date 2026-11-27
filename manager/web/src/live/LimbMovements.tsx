@@ -57,6 +57,8 @@ export function LimbMovements({ video, frames, onTime, onClose }: {
   const [hideDancer, setHideDancer] = useState(true); // with the cat: the dancer is blurred out behind it
   const player = useRef<HTMLVideoElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
+  const stage = useRef<HTMLDivElement>(null);
+  const [fullScreen, setFullScreen] = useState(false);
   const armedRef = useRef(armed);
   armedRef.current = armed;
   const anticipation = track?.anticipation ?? 2;
@@ -222,8 +224,28 @@ export function LimbMovements({ video, frames, onTime, onClose }: {
     window.addEventListener("resize", redraw);
     return () => window.removeEventListener("resize", redraw);
   }, [draw]);
+
+  // full screen: the whole stage (the video, the cat or skeleton, the karaoke), never the bare
+  // video, which would leave the drawings and the captions behind
+  const toggleFullScreen = () => {
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void stage.current?.requestFullscreen().catch(() => {});
+  };
   useEffect(() => {
-    const close = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    const changed = () => {
+      if (document.fullscreenElement === player.current) { // the browser's own (e.g. a shortcut): the stage instead
+        void document.exitFullscreen().then(() => stage.current?.requestFullscreen()).catch(() => {});
+        return;
+      }
+      setFullScreen(document.fullscreenElement === stage.current);
+      requestAnimationFrame(() => draw(lastIndex.current >= 0 ? lastIndex.current : 0));
+    };
+    document.addEventListener("fullscreenchange", changed);
+    return () => document.removeEventListener("fullscreenchange", changed);
+  }, [draw]);
+  useEffect(() => {
+    // Esc closes the preview; in full screen it only leaves full screen
+    const close = (event: KeyboardEvent) => { if (event.key === "Escape" && !document.fullscreenElement) onClose(); };
     window.addEventListener("keydown", close);
     return () => window.removeEventListener("keydown", close);
   }, [onClose]);
@@ -289,11 +311,16 @@ export function LimbMovements({ video, frames, onTime, onClose }: {
       <ErrorBox error={error} />
 
       <div className="limb-layout">
-        <div className="limb-video">
-          <video ref={player} src={video.url} controls playsInline preload="auto"
+        <div className="limb-video" ref={stage}>
+          <video ref={player} src={video.url} controls playsInline preload="auto" controlsList="nofullscreen" disablePictureInPicture
+            onDoubleClick={(event) => { event.preventDefault(); toggleFullScreen(); }}
             onSeeked={() => { lastIndex.current = -1; tick(); }} onLoadedData={() => { lastIndex.current = -1; tick(); }} />
           <canvas ref={canvas} className="limb-overlay" />
           <Karaoke captions={shownCaptions} seconds={t} anticipation={anticipation} />
+          <button type="button" className="limb-fullscreen" onClick={toggleFullScreen}
+            title={fullScreen ? "Leave full screen (Esc)" : "Full screen, with the captions and the drawings"}>
+            {fullScreen ? "✕" : "⛶"}
+          </button>
         </div>
 
         <div className="limb-list">
