@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Query, Request, Response
 from pydantic import BaseModel, Field
 
 from app.api.dependencies import Library
+from app.ballet.limb_motion import DEFAULT_MIN_DURATION, DEFAULT_THRESHOLD, analyse_limbs
 from app.media.video_audio import AGENTS, GOALS, AudioError, VideoAudio
 from app.media.video_notes import MAX_NOTE_CHARACTERS, VideoNotes
 from app.storage import RecordNotFoundError
@@ -41,6 +43,24 @@ def save_note(video_id: str, note: NoteRequest, library: Library, request: Reque
     library.get(video_id)
     saved = get_notes(request).save(video_id, note.source_time, note.text)
     return {"note": saved.to_api() if saved else None}
+
+
+# --- limbs moving -----------------------------------------------------------------------
+@router.get("/api/videos/{video_id}/limb-movements")
+def limb_movements(
+    video_id: str,
+    library: Library,
+    request: Request,
+    threshold: Annotated[float, Query(gt=0, le=10, description="Torso lengths per second")] = DEFAULT_THRESHOLD,
+    min_duration: Annotated[float, Query(ge=0, le=10, description="Seconds")] = DEFAULT_MIN_DURATION,
+) -> dict:
+    """Which limb moves when, from the video's analysed keypoints: every frame's speed per limb,
+    the movements (a limb moving for a while) and the moments (limbs moving together)."""
+    library.get(video_id)
+    stored = request.app.state.video_analyses.result_bytes(video_id)
+    if stored is None:
+        raise RecordNotFoundError(f"video {video_id!r} is not analysed yet")
+    return analyse_limbs(json.loads(stored), threshold, min_duration)
 
 
 # --- audio ------------------------------------------------------------------------------

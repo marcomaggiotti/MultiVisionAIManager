@@ -54,6 +54,16 @@ persist are written to the feedback log, with the time, so you can jump back to 
 - **AI coach** sends the shown frame through the full pipeline (CLIP + VLM) for a
   teacher-style comment. Each session (counts, events, comments, angle series) is saved
   in the manager by itself.
+- **🦵 Limb movements** (library videos, e.g. the reference video): the real video plays under
+  the studio with the skeleton drawn over it; each limb lights up in its colour while YOLO's
+  keypoints show it moving (left / right arm and leg, head, torso, whole body). Limbs are
+  measured relative to the body (arms and head to the shoulders, legs to the hips), in torso
+  lengths per second, from smoothed keypoints, so a dancer crossing the floor or YOLO's
+  jitter does not count as a limb moving ([`limb_motion.py`](manager/api/app/ballet/limb_motion.py)).
+  Every movement found is listed (limbs moving together form one moment) and plays **from 2 s
+  before** it starts (adjustable), with a countdown, and stops after it; *Play every
+  movement* chains them; one lane per limb shows when it moves (click to play). The panels
+  above follow the video. API: `GET /api/videos/{id}/limb-movements?threshold&min_duration`.
 - **Notes on frames** (library videos, e.g. a full class recorded with the teacher's
   explanations): 📝 *Note* (or **N**) writes a note on the shown frame; the *Notes* panel
   shows the frame's note and every note in time order (click to go there), the timeline
@@ -580,13 +590,18 @@ so a reload always gets the new build.
 
 ## Run it
 
+> **After a `git pull` that adds a module** (e.g. `modules/audio`), its folder stays empty
+> until the submodules are downloaded, and the build fails with *failed to read dockerfile:
+> open Dockerfile: no such file or directory*. Run `git submodule sync` then
+> `git submodule update --init --recursive`, or simply `./start.sh` / `.\start.ps1`, which do it.
+
 Requirements: Docker with Compose v2.24+. For the GPU: an NVIDIA driver and the
 [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/).
 
 ```bash
 git clone --recursive https://github.com/marcomaggiotti/MultiVisionAIManager
 cd MultiVisionAIManager
-docker compose up -d --build        # or ./start.sh (also clones modules/yolo, modules/clip and modules/vlm) · ./start.sh --cpu
+docker compose up -d --build        # or ./start.sh (Windows PowerShell: .\start.ps1): also downloads the modules · --cpu / -Cpu
 ```
 
 `docker compose up` builds and starts the manager and the three modules. From then on the
@@ -595,7 +610,7 @@ needed, idle stop for the VLM). The YOLO, CLIP and VLM modules are the
 [detect_image_engine](https://github.com/marcomaggiotti/detect_image_engine),
 [visual-semantic-engine](https://github.com/marcomaggiotti/visual-semantic-engine) and
 [vlm_hub_engine](https://github.com/marcomaggiotti/vlm_hub_engine) repositories,
-included as git submodules in `modules/yolo`, `modules/clip` and `modules/vlm` (`--recursive` clones them; otherwise run
+included as git submodules in `modules/yolo`, `modules/clip`, `modules/vlm` and `modules/audio` (`--recursive` clones them; otherwise run
 `git submodule update --init` once, or use `./start.sh`, which does it).
 
 ### GPU, PyTorch and CUDA versions
