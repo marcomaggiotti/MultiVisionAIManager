@@ -8,11 +8,11 @@ import uuid
 from pathlib import Path
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Query, Request, Response
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, HTTPException, Query, Request, Response
+from pydantic import BaseModel, Field, field_validator
 
 from app.api.dependencies import Library
-from app.ballet.limb_motion import DEFAULT_MIN_DURATION, DEFAULT_THRESHOLD, analyse_limbs
+from app.ballet.limb_motion import DEFAULT_MIN_DURATION, DEFAULT_THRESHOLD, LIMBS, analyse_limbs
 from app.media import annotated_video
 from app.media.video_audio import AGENTS, GOALS, AudioError, VideoAudio
 from app.media.video_comparison import temporary_target
@@ -69,6 +69,9 @@ def limb_movements(
 
 
 # --- captions and the annotated video ------------------------------------------------------
+LIMB_IDS = {limb.id for limb in LIMBS}
+
+
 class Caption(BaseModel):
     start: float = Field(ge=0)
     end: float = Field(ge=0)
@@ -80,6 +83,21 @@ class CaptionTrack(BaseModel):
     anticipation: float = Field(annotated_video.DEFAULT_ANTICIPATION, ge=0, le=10, description="Seconds shown before")
     threshold: float = Field(DEFAULT_THRESHOLD, gt=0, le=10)
     captions: list[Caption] = Field(default_factory=list, max_length=2000)
+    allowed_limbs: list[str] | None = Field(
+        None, description="The tags (limbs) allowed in the captions and lit up; None: not chosen yet (all)"
+    )
+
+    @field_validator("allowed_limbs")
+    @classmethod
+    def known_limbs(cls, value: list[str] | None) -> list[str] | None:
+        return None if value is None else _known_limbs(value)
+
+
+def _known_limbs(limbs: list[str]) -> list[str]:
+    unknown = sorted(set(limbs) - LIMB_IDS)
+    if unknown:
+        raise ValueError(f"unknown limbs {unknown}: use {sorted(LIMB_IDS)}")
+    return list(dict.fromkeys(limbs))
 
 
 class ExportRequest(CaptionTrack):
@@ -100,18 +118,26 @@ def captions(
     library: Library,
     request: Request,
     threshold: Annotated[float, Query(gt=0, le=10)] = DEFAULT_THRESHOLD,
+    allowed: Annotated[str | None, Query(description="Allowed tags (limb ids), comma separated")] = None,
+    fresh: Annotated[bool, Query(description="Propose again, even when a track is saved")] = False,
 ) -> dict:
-    """The caption track: the one saved (edited), else one proposed per movement found."""
+    """The caption track: the one saved (edited), else one proposed per movement found, made
+    of the allowed tags (limbs) only."""
     library.get(video_id)
     saved = request.app.state.video_captions.get(video_id)
-    if saved is not None:
-        return {**saved, "saved": True}
-    limbs = analyse_limbs(_stored_analysis(video_id, request), threshold)
+    if saved is not None and not fresh:
+        return {"allowed_limbs": None, **saved, "saved": True}
+    try:
+        allowed_limbs = None if allowed is None else _known_limbs([limb for limb in allowed.split(",") if limb])
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    limbs = analyse_limbs(_stored_analysis(video_id, request), threshold, allowed=allowed_limbs)
     proposed = annotated_video.proposed_captions(limbs["moments"])
     return {
-        "anticipation": annotated_video.DEFAULT_ANTICIPATION,
+        "anticipation": saved["anticipation"] if saved else annotated_video.DEFAULT_ANTICIPATION,
         "threshold": threshold,
         "captions": proposed,
+        "allowed_limbs": allowed_limbs,
         "saved": False,
     }
 
@@ -142,6 +168,8 @@ async def export_annotated_video(video_id: str, track: ExportRequest, library: L
     video = library.get(video_id)
     analysis = _stored_analysis(video_id, request)
     limbs = analyse_limbs(analysis, track.threshold)
+    if track.allowed_limbs is not None:  # only the allowed limbs light up
+        limbs["speeds"] = {limb: values for limb, values in limbs["speeds"].items() if limb in track.allowed_limbs}
     captions_shown = [caption.model_dump() for caption in track.captions if caption.text.strip()]
     analyses = request.app.state.video_analyses
     job = {"id": uuid.uuid4().hex[:12], "status": "running", "progress": 0.0, "video": None, "error": None}

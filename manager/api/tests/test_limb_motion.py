@@ -61,6 +61,13 @@ def test_the_right_leg_and_the_whole_body_are_found_not_the_still_limbs():
     assert len(result["times"]) == len(result["speeds"]["right_leg"]) == 120
 
 
+def test_moments_are_made_of_the_allowed_limbs_only():
+    result = analyse_limbs({"frames": frames(), "fps": FPS}, allowed=["body"])
+    assert [moment["limbs"] for moment in result["moments"]] == [["body"]]
+    assert {movement["limb"] for movement in result["movements"]} == {"right_leg", "body"}  # all still listed
+    assert analyse_limbs({"frames": frames(), "fps": FPS}, allowed=[])["moments"] == []
+
+
 def test_limbs_not_seen_have_no_speed():
     speeds = limb_speeds(frames(hidden=range(30, 45)), FPS)
     assert all(value is None for value in speeds["right_leg"][30:45])

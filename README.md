@@ -68,7 +68,12 @@ persist are written to the feedback log, with the time, so you can jump back to 
   [`annotated_video.py`](manager/api/app/media/annotated_video.py) in the export, same timing).
   The captions are proposed from the movements found (limbs moving together form one)
   and can be **rewritten or removed**: the edited track is saved with the video
-  (*↺ Propose again* forgets the edits). Click a caption to play it from the same time before;
+  (*↺ Propose again* forgets the edits). Each caption has **tags** (the limbs it is about)
+  that can be removed (✕) and added (＋ tag); a text never rewritten follows its tags. The
+  first time a video's captions are proposed, the preview **asks which tags are allowed**
+  (with how many movements YOLO found for each): the captions are made of those only, only
+  they light up, and the choice is saved with the track (`allowed_limbs`; *🏷 Tags* changes
+  it; `GET /api/videos/{id}/captions?allowed=…&fresh=true` proposes with it). Click a caption to play it from the same time before;
   *Play every movement* chains them; one lane per limb shows when it moves.
   **⛶ Full screen** (or a double-click) shows the whole preview, captions and drawings
   included (the video's own full screen, which would show the bare video, is turned off).
