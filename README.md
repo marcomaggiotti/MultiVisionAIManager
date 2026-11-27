@@ -66,6 +66,11 @@ persist are written to the feedback log, with the time, so you can jump back to 
   and can be **rewritten or removed**: the edited track is saved with the video
   (*↺ Propose again* forgets the edits). Click a caption to play it from the same time before;
   *Play every movement* chains them; one lane per limb shows when it moves.
+  **🐱 Cat** replaces the skeleton with a cartoon cat drawn on the keypoints (round tabby body,
+  striped legs and arms, paws, head with ears, blinking eyes and whiskers, a tail swaying
+  faster while the dancer moves; moving limbs glow in their colour); *hide the dancer* blurs
+  her out behind it ([`cat.ts`](manager/web/src/live/cat.ts) in the preview,
+  [`cat.py`](manager/api/app/media/cat.py) in the export).
   **⬇ Export to the library** makes an MP4 of the analysed pictures with the skeleton, the
   moving limbs, the captions and the video's sound (`<name>-annotated.mp4`, not analysed
   again). API: `GET /api/videos/{id}/limb-movements`, `GET/PUT/DELETE /api/videos/{id}/captions`,

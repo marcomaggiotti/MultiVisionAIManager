@@ -24,6 +24,7 @@ from PIL import Image, ImageDraw
 
 from app.ballet.limb_motion import LIMBS
 from app.media import ffmpeg
+from app.media.cat import draw_cat, hide_dancer
 from app.media.video_comparison import VISIBLE, _font, draw_skeleton
 
 SCHEMA = "CREATE TABLE IF NOT EXISTS video_captions (video_id TEXT PRIMARY KEY, data TEXT, updated REAL)"
@@ -97,14 +98,27 @@ def _wrap(draw: ImageDraw.ImageDraw, text: str, font, width: float) -> list[str]
     return [*lines, line] if line else lines
 
 
-def draw_annotated_frame(picture: bytes, frame: dict, moving: list[str], captions: list[dict], seconds: float) -> bytes:
-    """One frame: the skeleton (moving limbs in their colour) and the captions at the bottom."""
+def draw_annotated_frame(
+    picture: bytes,
+    frame: dict,
+    moving: list[str],
+    captions: list[dict],
+    seconds: float,
+    character: str = "skeleton",
+    hide: bool = False,
+) -> bytes:
+    """One frame: the skeleton (moving limbs in their colour) or the cartoon cat in the dancer's
+    place (``hide``: the dancer blurred out behind it), and the captions at the bottom."""
     image = Image.open(io.BytesIO(picture)).convert("RGB")
     overlay = Image.new("RGBA", image.size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
     side = max(image.size)
     keypoints = (frame.get("dancer") or {}).get("keypoints")
-    if keypoints:
+    if keypoints and character == "cat":
+        if hide:
+            hide_dancer(image, keypoints)
+        draw_cat(draw, keypoints, seconds, {limb.id: limb.color for limb in LIMBS if limb.id in moving})
+    elif keypoints:
         draw_skeleton(draw, keypoints, STILL_COLOR, max(1, side // 260), joints=False)
         for limb in LIMBS:
             if limb.id not in moving:
@@ -157,6 +171,8 @@ async def render_annotated_video(
     video_file: Path,
     target: Path,
     progress: Callable[[float], None],
+    character: str = "skeleton",
+    hide: bool = False,
 ) -> None:
     """Every analysed frame annotated, encoded as H.264 with the video's own sound (if any)."""
     ffmpeg.require_ffmpeg()
@@ -178,7 +194,10 @@ async def render_annotated_video(
             seconds = frame["source_time"]
             moving = [limb for limb, values in limbs["speeds"].items() if (values[position] or 0) >= threshold]
             shown = active_captions(captions, seconds, anticipation)
-            process.stdin.write(await asyncio.to_thread(draw_annotated_frame, picture, frame, moving, shown, seconds))
+            annotated = await asyncio.to_thread(
+                draw_annotated_frame, picture, frame, moving, shown, seconds, character, hide
+            )
+            process.stdin.write(annotated)
             await process.stdin.drain()
             progress((position + 1) / len(frames))
         process.stdin.close()

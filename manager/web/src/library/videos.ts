@@ -11,7 +11,7 @@ export type LibraryVideo = {
   width: number;
   height: number;
   created: number;
-  source: "upload" | "cut" | "comparison";
+  source: "upload" | "cut" | "comparison" | "annotated"; // the last two are made from analysed videos
   parent_id: string | null;
   notes: string;
   media_key: string;

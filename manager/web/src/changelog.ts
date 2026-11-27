@@ -4,6 +4,15 @@ export type Release = { version: string; date: string; title: string; changes: s
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.33.0", date: "2026-11-27", title: "🐱 A cartoon cat in the dancer's place",
+    changes: [
+      "🎬 Preview: 🦴 Skeleton or 🐱 Cat. The cat is drawn on the dancer's keypoints and moves with her: round tabby body, striped legs and arms, paws, ears, blinking eyes, whiskers, a tail that sways (faster while she moves); moving limbs glow in their colour.",
+      "“hide the dancer” blurs her out behind the cat.",
+      "Exported with the cat: <name>-cat.mp4 in the Library (captions and sound included).",
+      "The studio's video list no longer shows the made videos (comparisons, annotated videos).",
+    ],
+  },
+  {
     version: "0.32.0", date: "2026-11-27", title: "Preview with captions, exported to the library",
     changes: [
       "Live studio: the limb movements are now a 🎬 Preview (the button after Snapshot, Adjust keypoints, Note): the video in a large window, the moving limbs lit up.",

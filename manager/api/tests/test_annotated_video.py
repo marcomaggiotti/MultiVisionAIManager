@@ -57,5 +57,16 @@ def test_captions_are_edited_and_the_annotated_video_is_made(make_client, tmp_pa
         streams = subprocess.run(probe, capture_output=True, text=True, check=True).stdout
         assert sorted(stream["codec_type"] for stream in json.loads(streams)["streams"]) == ["audio", "video"]
 
+        # the cartoon cat in the dancer's place
+        job = client.post(
+            f"/api/videos/{video['id']}/annotated-video", json={**saved, "character": "cat", "hide_dancer": True}
+        ).json()
+        deadline = time.monotonic() + 60
+        while job["status"] == "running" and time.monotonic() < deadline:
+            time.sleep(0.1)
+            job = client.get(f"/api/render-jobs/{job['id']}").json()
+        assert job["status"] == "done", job
+        assert job["video"]["name"] == "class-cat.mp4" and job["video"]["source"] == "annotated"
+
         assert client.delete(url).status_code == 204
         assert client.get(url).json()["saved"] is False
