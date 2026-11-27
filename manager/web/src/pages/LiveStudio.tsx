@@ -20,9 +20,8 @@ import { analysisLabel, formatDuration, listVideos } from "../library/videos";
 import { frameImage } from "../live/frameImage";
 import { NotesPanel } from "../live/NotesPanel";
 import { LimbMovements } from "../live/LimbMovements";
-import { AudioPanel, SoundChoice } from "../live/AudioPanel";
 import { frameIndexAtTime } from "../live/Timeline";
-import { AudioInfo, VideoNote, listNotes, noteAt } from "../library/videoExtras";
+import { VideoNote, listNotes, noteAt } from "../library/videoExtras";
 import { Recorded, STATUS_COLOR, Status, Vocabulary, fmtTime, stepColor } from "../live/types";
 
 const PART_LABEL: Record<string, string> = {
@@ -104,25 +103,6 @@ export default function LiveStudio() {
   const noted = useMemo(() => new Set(frames.flatMap((recorded, index) => (noteAt(notes, recorded.sourceTime) ? [index] : []))),
     [notes, frames, live.version]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // the video's sound (original or cleaned), played in time with the frames
-  const [sound, setSound] = useState<SoundChoice>("off");
-  const [audio, setAudio] = useState<AudioInfo | null>(null);
-  const player = useRef<HTMLAudioElement>(null);
-  const soundUrl = sound === "off" || !chosenVideo ? null : audio?.[sound] ?? null;
-  useEffect(() => { setSound("off"); setAudio(null); }, [chosenVideo?.id]);
-  useEffect(() => {
-    const element = player.current;
-    if (!element || !soundUrl) return;
-    const time = frame?.sourceTime ?? 0;
-    element.playbackRate = playback.player.speed;
-    if (playback.player.playing) {
-      if (element.paused || Math.abs(element.currentTime - time) > 0.35) element.currentTime = time;
-      if (element.paused) void element.play().catch(() => undefined);
-    } else {
-      element.pause();
-      element.currentTime = time;
-    }
-  }, [soundUrl, playback.player.playing, playback.player.speed, frame?.sourceTime]);
 
   const { holdCurrentFrame, shownIndex } = playback;
   /** 📷: a frame of a saved library video is kept in the snapshot library and opened in
@@ -350,7 +330,6 @@ export default function LiveStudio() {
         </div>
         <Timeline frames={frames} index={playback.shownIndex} version={live.version} vocab={vocab}
           player={playback.player} actions={playerActions} noted={noted} />
-        {soundUrl && <audio ref={player} src={soundUrl} preload="auto" hidden />}
         {chosenVideo && (
           <details className="glass limb-section" open>
             <summary style={{ fontWeight: 600 }}>🦵 Limb movements · the video, with the limbs YOLO sees moving</summary>
@@ -379,13 +358,12 @@ export default function LiveStudio() {
             <summary style={{ fontWeight: 600 }}>📝 Notes · {notes.length}</summary>
             <NotesPanel videoId={chosenVideo.id} notes={notes} onNotes={setNotes} time={frame?.sourceTime ?? null}
               editing={noteEditing} onEditing={setNoteEditing}
-              onSeekTime={(seconds) => { setNoteEditing(false); playback.seek(frameIndexAtTime(frames, seconds)); }} />
-          </details>
-        )}
-        {chosenVideo && (
-          <details className="glass">
-            <summary style={{ fontWeight: 600 }}>🎵 Sound{audio?.cleaned ? " · cleaned" : audio?.original ? " · extracted" : ""}</summary>
-            <AudioPanel videoId={chosenVideo.id} sound={sound} onSound={setSound} onAudio={setAudio} />
+              onSeekTime={(seconds) => {
+                // stop on the note's frame (a replay going on would move past it at once)
+                setNoteEditing(false);
+                playback.holdCurrentFrame();
+                playback.seek(frameIndexAtTime(frames, seconds));
+              }} />
           </details>
         )}
         <details className="glass" open>

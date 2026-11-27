@@ -335,7 +335,12 @@ export function VideoKeypoints({ focus = null }: { focus?: FrameFocus | null }) 
                   onSeekTime={(seconds) => {
                     setNoteEditing(false);
                     const index = frames.findIndex((frame) => Math.abs(frame.source_time - seconds) < 0.002);
-                    if (index >= 0) setSelected(index);
+                    if (index >= 0) { setSelected(index); return; }
+                    // outside the range shown: show the frames around the note
+                    const from = Math.max(0, Math.floor(seconds - 5)), to = Math.min(video.duration, Math.ceil(seconds + 5));
+                    setStart(from);
+                    setEnd(to);
+                    void load(video, from, to, seconds);
                   }} />
                 <div className="row" style={{ gap: 6, marginTop: 8 }}>
                   <button className="small" disabled={video.analysis?.status !== "done"}

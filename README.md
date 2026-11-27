@@ -69,19 +69,6 @@ persist are written to the feedback log, with the time, so you can jump back to 
   shows the frame's note and every note in time order (click to go there), the timeline
   marks them (▾), and *Analysis → Video keypoints* shows and edits them too.
   API: `GET/PUT /api/videos/{id}/notes` (an empty text removes a note).
-- **Sound** (library videos): *🎵 Sound* extracts the video's audio (FLAC) and cleans it with
-  the **audio module**, [audio_clean_service](https://github.com/marcomaggiotti/audio_clean_service)
-  (`modules/audio`, git submodule): it measures the recording (noise floor, signal / noise,
-  loudness, clipping, clicks, mains hum, rumble, consonants), its agent (rule-based, or
-  Claude with `ANTHROPIC_API_KEY`) tries plans on a preview and keeps the best for the goal
-  (speech, listening, archive), and ffmpeg filters the whole file (de-clip, de-click,
-  de-hum, high-pass, noise reduction, loudness). Or choose the filters yourself (*🎚
-  Filters*). Pauses are **never shortened** (when the agent's plan shortens them it runs
-  again without that step), so *🔊 Original* / *✨ Cleaned* play **in time with the frames**.
-  The report shows the plan, the agent's reasons, the measurements before / after and the
-  spectrograms. The audio is kept in the picture store (`audio/<video id>/`). API:
-  `GET /api/videos/{id}/audio`, `POST …/audio/extract`, `POST …/audio/clean`,
-  `GET …/audio/original.flac | cleaned.flac`, `GET …/audio/spectrogram`.
 - **Timeline**: press on a track and slide to move through the video (the panels follow).
   The time (m:ss.cc) and the frame number can be typed to go to an exact frame; coming back to
   the studio reloads the video's analysis, so keypoints corrected in Analysis show here too
@@ -160,6 +147,22 @@ right mirroring detected), its average, and a score chart (click to go there).
 the Library (`comparison-<performance>-vs-<reference>.mp4`).
 Code: `manager/api/app/media/video_comparison.py`; API: `POST /api/video-comparisons/preview`,
 `POST /api/video-comparisons/render` → `GET /api/video-comparisons/jobs/{id}`.
+
+**🎵 Sound** (in *Library videos*, for any of the compared videos, the reference by default:
+the teacher's explanations) extracts the video's audio (FLAC) and cleans it with
+the **audio module**, [audio_clean_service](https://github.com/marcomaggiotti/audio_clean_service)
+(`modules/audio`, git submodule): it measures the recording (noise floor, signal / noise,
+loudness, clipping, clicks, mains hum, rumble, consonants), its agent (rule-based, or
+Claude with `ANTHROPIC_API_KEY`) tries plans on a preview and keeps the best for the goal
+(speech, listening, archive), and ffmpeg filters the whole file (de-clip, de-click,
+de-hum, high-pass, noise reduction, loudness). Or choose the filters yourself (*🎚
+Filters*). Pauses are **never shortened** (when the agent's plan shortens them it runs
+again without that step), so *🔊 Original* / *✨ Cleaned* play **in time with the comparison** (with that video's
+offset).
+The report shows the plan, the agent's reasons, the measurements before / after and the
+spectrograms. The audio is kept in the picture store (`audio/<video id>/`). API:
+`GET /api/videos/{id}/audio`, `POST …/audio/extract`, `POST …/audio/clean`,
+`GET …/audio/original.flac | cleaned.flac`, `GET …/audio/spectrogram`.
 
 **Live** (second tab):
 
