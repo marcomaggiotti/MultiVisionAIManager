@@ -70,10 +70,15 @@ persist are written to the feedback log, with the time, so you can jump back to 
   and can be **rewritten or removed**: the edited track is saved with the video
   (*↺ Propose again* forgets the edits). Click a caption to play it from the same time before;
   *Play every movement* chains them; one lane per limb shows when it moves.
-  **🐱 Cat** replaces the skeleton with a cartoon cat drawn on the keypoints (round tabby body,
-  striped legs and arms, paws, head with ears, blinking eyes and whiskers, a tail swaying
-  faster while the dancer moves; moving limbs glow in their colour); *hide the dancer* blurs
-  her out behind it ([`cat.ts`](manager/web/src/live/cat.ts) in the preview,
+  **🐱 Cat** replaces the skeleton with a cartoon cat drawn on the keypoints (striped tabby,
+  paws, head with ears, blinking eyes and whiskers, a tail swaying faster while the dancer
+  moves; moving limbs glow in their colour); *hide the dancer* blurs her out behind it. The
+  cat **stays on the keypoints**: YOLO's jitter is removed with a centred average over the
+  frames around (no lag, as the whole video is known), keypoints missed for under 0.5 s are
+  filled in, and the preview follows the video between two analysed frames. It **looks
+  round**: limbs are shaded tubes, head and paws shaded spheres lit from the top left, a
+  shadow lies on the floor, the limbs of the far side (the ear YOLO sees less) are darker and
+  behind the body, and the face turns with the head ([`cat.ts`](manager/web/src/live/cat.ts) in the preview,
   [`cat.py`](manager/api/app/media/cat.py) in the export).
   **⬇ Export to the library** makes an MP4 of the analysed pictures with the skeleton, the
   moving limbs, the captions and the video's sound (`<name>-annotated.mp4`, not analysed

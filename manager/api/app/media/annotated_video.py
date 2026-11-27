@@ -26,7 +26,7 @@ from PIL import Image, ImageDraw
 
 from app.ballet.limb_motion import LIMBS
 from app.media import ffmpeg
-from app.media.cat import draw_cat, hide_dancer
+from app.media.cat import draw_cat, hide_dancer, steady_track
 from app.media.video_comparison import VISIBLE, _font, draw_skeleton
 
 SCHEMA = "CREATE TABLE IF NOT EXISTS video_captions (video_id TEXT PRIMARY KEY, data TEXT, updated REAL)"
@@ -202,7 +202,7 @@ def draw_annotated_frame(
     if keypoints and character == "cat":
         if hide:
             hide_dancer(image, keypoints)
-        draw_cat(draw, keypoints, seconds, {limb.id: limb.color for limb in LIMBS if limb.id in moving})
+        draw_cat(overlay, keypoints, seconds, {limb.id: limb.color for limb in LIMBS if limb.id in moving})
     elif keypoints:
         draw_skeleton(draw, keypoints, STILL_COLOR, max(1, side // 260), joints=False)
         for limb in LIMBS:
@@ -256,6 +256,15 @@ async def render_annotated_video(
     )  # fmt: skip
     frames = analysis["frames"]
     threshold = limbs["threshold"]
+    if character == "cat":  # the cat on steady keypoints (no jitter, short misses filled)
+        track = steady_track(
+            [frame["source_time"] for frame in frames],
+            [(frame.get("dancer") or {}).get("keypoints") for frame in frames],
+        )
+        frames = [
+            {**frame, "dancer": {"keypoints": points} if points else None}
+            for frame, points in zip(frames, track, strict=True)
+        ]
     try:
         for position, frame in enumerate(frames):
             picture = frame_picture(frame["index"])

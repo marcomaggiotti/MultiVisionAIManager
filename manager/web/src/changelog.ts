@@ -4,6 +4,14 @@ export type Release = { version: string; date: string; title: string; changes: s
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.35.0", date: "2026-11-27", title: "🐱 A rounder cat that stays on the dancer",
+    changes: [
+      "The cat stays on the keypoints: YOLO's jitter is removed (a centred average over the frames around, so no lag), keypoints missed for under 0.5 s are filled in, and the preview follows the video between two analysed frames instead of jumping.",
+      "It looks round: shaded tube limbs, a shaded sphere for the head and the paws, a shadow on the floor; the limbs of the far side are darker and behind the body, and the face turns with the head.",
+      "Exported videos: the same cat; the text is in DejaVu Sans Bold, with the accents of the ballet terms (plié, relevé, développé).",
+    ],
+  },
+  {
     version: "0.34.0", date: "2026-11-27", title: "🎤 Karaoke captions, always readable",
     changes: [
       "🎬 Preview and exported videos: the captions are a karaoke band at the bottom of the video, two lines tall, dark and opaque, with bold outlined text, readable on any picture.",

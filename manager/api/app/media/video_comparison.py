@@ -15,6 +15,7 @@ the library.
 from __future__ import annotations
 
 import asyncio
+import functools
 import io
 import json
 import math
@@ -198,8 +199,21 @@ def compare_videos(compared: list[ComparedVideo], mirror: MirrorMode = MirrorMod
 
 
 # --- the comparison video -------------------------------------------------------------------
+FONT_FILES = (  # bold, with the accents of the ballet terms (plié, relevé, développé)
+    "DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
+)
+
+
+@functools.cache
 def _font(size: int):
-    try:
+    for name in FONT_FILES:
+        try:
+            return ImageFont.truetype(name, size)
+        except OSError:
+            continue
+    try:  # no DejaVu: Pillow's own font (basic Latin letters only)
         return ImageFont.load_default(size=size)
     except TypeError:  # Pillow < 10.1
         return ImageFont.load_default()
