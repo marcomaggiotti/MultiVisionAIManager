@@ -2,7 +2,7 @@ FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 MANAGER_DATA_DIR=/data PORT=8080
 WORKDIR /srv
 # ffmpeg cuts videos (Live studio → Cut video).
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core && rm -rf /var/lib/apt/lists/*
 COPY pyproject.toml ./
 COPY app ./app
 # PIP_EXTRAS=azure adds the Azure Blob Storage picture store
