@@ -4,6 +4,13 @@ export type Release = { version: string; date: string; title: string; changes: s
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.30.1", date: "2026-11-27", title: "Windows start script; modules downloaded when missing",
+    changes: [
+      "start.ps1 for Windows PowerShell (like start.sh): downloads the module repositories that are missing (e.g. the new modules/audio), then builds and starts everything. -Cpu, -Update, -Down.",
+      "start.sh and start.ps1 align the submodule configuration first, so a module added by a pull is found.",
+    ],
+  },
+  {
     version: "0.30.0", date: "2026-11-26", title: "Notes on frames; the video's sound, extracted and cleaned",
     changes: [
       "Live studio (library videos): 📝 Note (or N) writes a text note on the shown frame; the Notes panel lists them (click to go there) and the timeline marks them. Analysis shows and edits them too.",

@@ -580,13 +580,18 @@ so a reload always gets the new build.
 
 ## Run it
 
+> **After a `git pull` that adds a module** (e.g. `modules/audio`), its folder stays empty
+> until the submodules are downloaded, and the build fails with *failed to read dockerfile:
+> open Dockerfile: no such file or directory*. Run `git submodule sync` then
+> `git submodule update --init --recursive`, or simply `./start.sh` / `.\start.ps1`, which do it.
+
 Requirements: Docker with Compose v2.24+. For the GPU: an NVIDIA driver and the
 [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/).
 
 ```bash
 git clone --recursive https://github.com/marcomaggiotti/MultiVisionAIManager
 cd MultiVisionAIManager
-docker compose up -d --build        # or ./start.sh (also clones modules/yolo, modules/clip and modules/vlm) · ./start.sh --cpu
+docker compose up -d --build        # or ./start.sh (Windows PowerShell: .\start.ps1): also downloads the modules · --cpu / -Cpu
 ```
 
 `docker compose up` builds and starts the manager and the three modules. From then on the
@@ -595,7 +600,7 @@ needed, idle stop for the VLM). The YOLO, CLIP and VLM modules are the
 [detect_image_engine](https://github.com/marcomaggiotti/detect_image_engine),
 [visual-semantic-engine](https://github.com/marcomaggiotti/visual-semantic-engine) and
 [vlm_hub_engine](https://github.com/marcomaggiotti/vlm_hub_engine) repositories,
-included as git submodules in `modules/yolo`, `modules/clip` and `modules/vlm` (`--recursive` clones them; otherwise run
+included as git submodules in `modules/yolo`, `modules/clip`, `modules/vlm` and `modules/audio` (`--recursive` clones them; otherwise run
 `git submodule update --init` once, or use `./start.sh`, which does it).
 
 ### GPU, PyTorch and CUDA versions

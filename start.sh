@@ -33,6 +33,7 @@ fi
 #   modules/clip = https://github.com/marcomaggiotti/visual-semantic-engine
 #   modules/vlm  = https://github.com/marcomaggiotti/vlm_hub_engine
 #   modules/audio = https://github.com/marcomaggiotti/audio_clean_service
+git submodule sync --recursive  # a pull may have added a module to .gitmodules
 for module in yolo clip vlm audio; do
   if [ ! -f "modules/$module/Dockerfile" ]; then
     echo "Cloning the $module module into modules/$module..."
