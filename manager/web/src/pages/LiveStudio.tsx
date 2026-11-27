@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { createPortal } from "react-dom";
 import { api, form, post } from "../api";
 import { useLoad } from "../hooks";
 import { Slider } from "../components/ui";
@@ -96,6 +97,7 @@ export default function LiveStudio() {
   // notes on the frames of the library video shown
   const [notes, setNotes] = useState<VideoNote[]>([]);
   const [noteEditing, setNoteEditing] = useState(false);
+  const [previewing, setPreviewing] = useState(false); // the limbs-moving preview of the library video
   useEffect(() => {
     setNotes([]);
     if (chosenVideo) listNotes(chosenVideo.id).then(setNotes).catch(() => setNotes([]));
@@ -139,6 +141,7 @@ export default function LiveStudio() {
   const playerActions: PlayerActions = {
     onTogglePlay: playback.togglePlay, onSeek: playback.seek, onSpeed: playback.setSpeed, onFollow: playback.follow,
     onSnapshot: openSnapshot, onAdjustKeypoints: openKeypointAdjustment, onNote: chosenVideo ? openNote : undefined,
+    onPreview: chosenVideo ? () => { playback.holdCurrentFrame(); setPreviewing(true); } : undefined,
   };
 
   const held = useMemo(() => {
@@ -330,16 +333,17 @@ export default function LiveStudio() {
         </div>
         <Timeline frames={frames} index={playback.shownIndex} version={live.version} vocab={vocab}
           player={playback.player} actions={playerActions} noted={noted} />
-        {chosenVideo && (
-          <details className="glass limb-section" open>
-            <summary style={{ fontWeight: 600 }}>🦵 Limb movements · the video, with the limbs YOLO sees moving</summary>
-            <LimbMovements video={chosenVideo} frames={frames} studioTime={frame?.sourceTime ?? null} studioPlaying={playback.player.playing}
-              onTime={(seconds) => { const index = frameIndexAtTime(frames, seconds); if (index !== playback.shownIndex) playback.seek(index); }}
-              onPlay={() => { if (playback.player.playing) playback.holdCurrentFrame(); }} />
-          </details>
-        )}
         <KeypointCollection frames={frames} shownIndex={playback.shownIndex} version={live.version}
           keypoint={hoveredKeypoint ?? followedKeypoint} onKeypoint={setFollowedKeypoint} onSeek={playback.seek} />
+        {previewing && chosenVideo && createPortal(
+          <div className="modal-backdrop">
+            <div className="glass modal limb-preview" role="dialog" aria-label="Preview">
+              <LimbMovements video={chosenVideo} frames={frames} onClose={() => setPreviewing(false)}
+                onTime={(seconds) => { const index = frameIndexAtTime(frames, seconds); if (index !== playback.shownIndex) playback.seek(index); }} />
+            </div>
+          </div>,
+          document.body,
+        )}
         {snapshotFrame && <SnapshotDialog frame={snapshotFrame} overlays={overlays} onClose={() => setSnapshotFrame(null)} />}
         {cutting && chosenVideo && (
           <VideoCutDialog source={{ libraryVideo: chosenVideo }} onClose={() => setCutting(false)}

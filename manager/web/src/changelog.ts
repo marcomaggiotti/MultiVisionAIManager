@@ -4,6 +4,15 @@ export type Release = { version: string; date: string; title: string; changes: s
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.32.0", date: "2026-11-27", title: "Preview with captions, exported to the library",
+    changes: [
+      "Live studio: the limb movements are now a 🎬 Preview (the button after Snapshot, Adjust keypoints, Note): the video in a large window, the moving limbs lit up.",
+      "A caption at the bottom of the video announces each movement 2 s before it starts (adjustable) and stays until it ends; the labels under the video are gone.",
+      "The captions are proposed from the movements found and can be rewritten or removed; the edits are saved with the video (↺ Propose again forgets them).",
+      "⬇ Export to the library: an MP4 with the skeleton, the moving limbs, the captions and the video's sound (<name>-annotated.mp4).",
+    ],
+  },
+  {
     version: "0.31.2", date: "2026-11-27", title: "Clicking a note stops on its frame",
     changes: [
       "Live studio: clicking a note pauses the player on the note's exact frame (the timeline, the panels and the keypoints show it); before, a replay going on moved past it at once.",

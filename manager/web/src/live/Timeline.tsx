@@ -153,6 +153,7 @@ export type PlayerActions = {
   onSnapshot: () => void;
   onAdjustKeypoints: () => void;
   onNote?: () => void; // write a note on the shown frame (library videos)
+  onPreview?: () => void; // the video with the limbs moving and the captions (library videos)
 };
 
 export function Timeline({ frames, index, vocab, version, player, actions, noted }: {
@@ -231,6 +232,7 @@ function PlayerControls({ frames, index, player, actions }: { frames: Recorded[]
       <button className={`small ${player.following ? "" : "ghost"}`} onClick={actions.onFollow} title="Follow the newest frame">
         {player.following ? "● following" : "Go live"}
       </button>
+      {actions.onPreview && <button className="small" title="Preview the video with the limbs YOLO sees moving and the captions announcing them" onClick={actions.onPreview}>🎬 Preview</button>}
     </div>
   );
 }

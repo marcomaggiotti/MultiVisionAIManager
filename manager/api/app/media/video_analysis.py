@@ -254,7 +254,7 @@ class VideoAnalyses:
         waiting = [
             video.id
             for video in sorted(self.library.list(), key=lambda video: video.created)
-            if video.source != "comparison"  # made from analysed videos: nothing to analyse
+            if video.source not in ("comparison", "annotated")  # made from analysed videos: nothing to analyse
             and (video.id not in states or states[video.id].status in (QUEUED, RUNNING))
         ]
         for video_id in waiting:
