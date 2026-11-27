@@ -4,6 +4,15 @@ export type Release = { version: string; date: string; title: string; changes: s
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.31.0", date: "2026-11-27", title: "Live studio: which limb is moving",
+    changes: [
+      "🦵 Limb movements (library videos): the video plays under the studio with the skeleton over it; each limb (arms, legs, head, torso, whole body) lights up in its colour while YOLO's keypoints show it moving.",
+      "Every movement found is listed (limbs moving together are one moment): click it to play from 2 s before (adjustable), with a countdown, stopping after it; ▶ Play every movement chains them.",
+      "One lane per limb shows when it moves; sensitivity for large or small movements; the panels above follow the video.",
+      "Limbs are measured relative to the body, from smoothed keypoints, so travelling across the floor and YOLO's jitter are not taken for limbs moving.",
+    ],
+  },
+  {
     version: "0.30.1", date: "2026-11-27", title: "Windows start script; modules downloaded when missing",
     changes: [
       "start.ps1 for Windows PowerShell (like start.sh): downloads the module repositories that are missing (e.g. the new modules/audio), then builds and starts everything. -Cpu, -Update, -Down.",

@@ -19,6 +19,7 @@ import { KeypointCollection } from "../live/KeypointCollection";
 import { analysisLabel, formatDuration, listVideos } from "../library/videos";
 import { frameImage } from "../live/frameImage";
 import { NotesPanel } from "../live/NotesPanel";
+import { LimbMovements } from "../live/LimbMovements";
 import { AudioPanel, SoundChoice } from "../live/AudioPanel";
 import { frameIndexAtTime } from "../live/Timeline";
 import { AudioInfo, VideoNote, listNotes, noteAt } from "../library/videoExtras";
@@ -350,6 +351,14 @@ export default function LiveStudio() {
         <Timeline frames={frames} index={playback.shownIndex} version={live.version} vocab={vocab}
           player={playback.player} actions={playerActions} noted={noted} />
         {soundUrl && <audio ref={player} src={soundUrl} preload="auto" hidden />}
+        {chosenVideo && (
+          <details className="glass limb-section" open>
+            <summary style={{ fontWeight: 600 }}>🦵 Limb movements · the video, with the limbs YOLO sees moving</summary>
+            <LimbMovements video={chosenVideo} frames={frames} studioTime={frame?.sourceTime ?? null} studioPlaying={playback.player.playing}
+              onTime={(seconds) => { const index = frameIndexAtTime(frames, seconds); if (index !== playback.shownIndex) playback.seek(index); }}
+              onPlay={() => { if (playback.player.playing) playback.holdCurrentFrame(); }} />
+          </details>
+        )}
         <KeypointCollection frames={frames} shownIndex={playback.shownIndex} version={live.version}
           keypoint={hoveredKeypoint ?? followedKeypoint} onKeypoint={setFollowedKeypoint} onSeek={playback.seek} />
         {snapshotFrame && <SnapshotDialog frame={snapshotFrame} overlays={overlays} onClose={() => setSnapshotFrame(null)} />}

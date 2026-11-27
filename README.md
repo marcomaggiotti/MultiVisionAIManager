@@ -54,6 +54,16 @@ persist are written to the feedback log, with the time, so you can jump back to 
 - **AI coach** sends the shown frame through the full pipeline (CLIP + VLM) for a
   teacher-style comment. Each session (counts, events, comments, angle series) is saved
   in the manager by itself.
+- **🦵 Limb movements** (library videos, e.g. the reference video): the real video plays under
+  the studio with the skeleton drawn over it; each limb lights up in its colour while YOLO's
+  keypoints show it moving (left / right arm and leg, head, torso, whole body). Limbs are
+  measured relative to the body (arms and head to the shoulders, legs to the hips), in torso
+  lengths per second, from smoothed keypoints, so a dancer crossing the floor or YOLO's
+  jitter does not count as a limb moving ([`limb_motion.py`](manager/api/app/ballet/limb_motion.py)).
+  Every movement found is listed (limbs moving together form one moment) and plays **from 2 s
+  before** it starts (adjustable), with a countdown, and stops after it; *Play every
+  movement* chains them; one lane per limb shows when it moves (click to play). The panels
+  above follow the video. API: `GET /api/videos/{id}/limb-movements?threshold&min_duration`.
 - **Notes on frames** (library videos, e.g. a full class recorded with the teacher's
   explanations): 📝 *Note* (or **N**) writes a note on the shown frame; the *Notes* panel
   shows the frame's note and every note in time order (click to go there), the timeline
