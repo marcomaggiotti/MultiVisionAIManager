@@ -358,7 +358,12 @@ export default function LiveStudio() {
             <summary style={{ fontWeight: 600 }}>📝 Notes · {notes.length}</summary>
             <NotesPanel videoId={chosenVideo.id} notes={notes} onNotes={setNotes} time={frame?.sourceTime ?? null}
               editing={noteEditing} onEditing={setNoteEditing}
-              onSeekTime={(seconds) => { setNoteEditing(false); playback.seek(frameIndexAtTime(frames, seconds)); }} />
+              onSeekTime={(seconds) => {
+                // stop on the note's frame (a replay going on would move past it at once)
+                setNoteEditing(false);
+                playback.holdCurrentFrame();
+                playback.seek(frameIndexAtTime(frames, seconds));
+              }} />
           </details>
         )}
         <details className="glass" open>

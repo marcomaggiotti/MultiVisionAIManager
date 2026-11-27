@@ -63,7 +63,8 @@ export function NotesPanel({ videoId, notes, onNotes, time, editing, onEditing, 
       {notes.length > 0 && (
         <div className="notes-list">
           {notes.map((note) => (
-            <button key={note.source_time} className={`note-item ${current?.source_time === note.source_time ? "on" : ""}`} onClick={() => onSeekTime(note.source_time)}>
+            <button key={note.source_time} className={`note-item ${current?.source_time === note.source_time ? "on" : ""}`} onClick={() => onSeekTime(note.source_time)}
+              title="Go to this frame">
               <span className="mono small">{fmtTime(note.source_time)}</span>
               <span className="small">{note.text}</span>
             </button>

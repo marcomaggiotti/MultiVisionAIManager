@@ -4,6 +4,13 @@ export type Release = { version: string; date: string; title: string; changes: s
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.31.2", date: "2026-11-27", title: "Clicking a note stops on its frame",
+    changes: [
+      "Live studio: clicking a note pauses the player on the note's exact frame (the timeline, the panels and the keypoints show it); before, a replay going on moved past it at once.",
+      "Analysis: clicking a note outside the time range shown loads the frames around it and selects the note's frame.",
+    ],
+  },
+  {
     version: "0.31.1", date: "2026-11-27", title: "The sound panel moves to Compare",
     changes: [
       "🎵 Sound is now in Compare → Library videos: choose which compared video's sound (the reference by default: the teacher's explanations), extract and clean it, and hear the original or cleaned sound in time with the comparison (that video's offset included).",
