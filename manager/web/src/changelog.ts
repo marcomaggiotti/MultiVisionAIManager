@@ -4,6 +4,13 @@ export type Release = { version: string; date: string; title: string; changes: s
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.31.1", date: "2026-11-27", title: "The sound panel moves to Compare",
+    changes: [
+      "🎵 Sound is now in Compare → Library videos: choose which compared video's sound (the reference by default: the teacher's explanations), extract and clean it, and hear the original or cleaned sound in time with the comparison (that video's offset included).",
+      "The live studio no longer has the sound panel; the 🦵 Limb movements video plays the video's own sound.",
+    ],
+  },
+  {
     version: "0.31.0", date: "2026-11-27", title: "Live studio: which limb is moving",
     changes: [
       "🦵 Limb movements (library videos): the video plays under the studio with the skeleton over it; each limb (arms, legs, head, torso, whole body) lights up in its colour while YOLO's keypoints show it moving.",

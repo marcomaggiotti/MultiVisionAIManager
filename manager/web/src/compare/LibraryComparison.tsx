@@ -5,6 +5,8 @@ import { Card, ErrorBox } from "../components/ui";
 import { SKELETON } from "../components/ImageOverlay";
 import { LibraryVideo, analysedFrameUrl, analysisLabel, formatDuration, listVideos } from "../library/videos";
 import { MirrorMode, scoreStatus, MATCH_COLOR } from "./types";
+import { AudioPanel, SoundChoice } from "../library/AudioPanel";
+import { AudioInfo } from "../library/videoExtras";
 
 type ComparedVideo = { id: string; name: string; created: number; role: "base" | "reference" | "performance"; color: string; offset: number; run: string; duration: number };
 type ComparedFrame = { index: number; t: number; keypoints: number[][] | null; overlays: Record<string, number[][] | null>; scores: Record<string, number> };
@@ -89,6 +91,11 @@ export function LibraryComparison() {
   const [index, setIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
+  // the sound of one of the compared videos (the reference by default: the teacher's explanations)
+  const [soundVideoId, setSoundVideoId] = useState<string | null>(null);
+  const [sound, setSound] = useState<SoundChoice>("off");
+  const [audio, setAudio] = useState<AudioInfo | null>(null);
+  const soundPlayer = useRef<HTMLAudioElement>(null);
   const [shown, setShown] = useState<Record<string, boolean>>({});
   const [job, setJob] = useState<Job | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -179,6 +186,24 @@ export function LibraryComparison() {
     }
   };
 
+  // the chosen sound plays in time with the comparison: the shown time, plus that video's offset
+  const soundVideo = comparison?.videos.find((video) => video.id === (soundVideoId ?? comparison.reference)) ?? null;
+  const soundUrl = sound === "off" || !soundVideo ? null : audio?.[sound] ?? null;
+  useEffect(() => { setSound("off"); setAudio(null); }, [soundVideo?.id]);
+  useEffect(() => {
+    const element = soundPlayer.current;
+    if (!element || !soundUrl || !frame || !soundVideo) return;
+    const time = Math.max(0, frame.t + (soundVideo.role === "base" ? 0 : offsets[soundVideo.id] ?? 0));
+    element.playbackRate = speed;
+    if (playing) {
+      if (element.paused || Math.abs(element.currentTime - time) > 0.35) element.currentTime = time;
+      if (element.paused) void element.play().catch(() => undefined);
+    } else {
+      element.pause();
+      element.currentTime = time;
+    }
+  }, [soundUrl, playing, speed, frame, soundVideo, offsets]);
+
   const changeOffset = (videoId: string, seconds: number) => setOffsets({ ...offsets, [videoId]: Math.round(seconds * 100) / 100 });
   const time = frame?.t ?? 0;
   return (
@@ -262,6 +287,15 @@ export function LibraryComparison() {
                   <button key={mode} className={mirror === mode ? "on" : ""} onClick={() => setMirror(mode)}>{{ auto: "Auto", same: "Same side", mirrored: "Mirror" }[mode]}</button>
                 ))}
               </div>
+            </Card>
+            <Card title={`🎵 Sound${audio?.cleaned ? " · cleaned" : audio?.original ? " · extracted" : ""}`}>
+              <label className="small muted">Of
+                <select value={soundVideo?.id ?? ""} onChange={(event) => setSoundVideoId(event.target.value)} style={{ marginTop: 4 }}>
+                  {comparison.videos.map((video) => <option key={video.id} value={video.id}>{video.name} · {video.role === "reference" ? "reference" : video.role === "base" ? "shown performance" : "performance"}</option>)}
+                </select>
+              </label>
+              {soundVideo && <AudioPanel key={soundVideo.id} videoId={soundVideo.id} sound={sound} onSound={setSound} onAudio={setAudio} />}
+              {soundUrl && <audio ref={soundPlayer} src={soundUrl} preload="auto" hidden />}
             </Card>
             <Card title="Comparison video">
               <p className="small muted">An MP4 of the newest performance with every skeleton, the names and the scores: saved in the Library.</p>

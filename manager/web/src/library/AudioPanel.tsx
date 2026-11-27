@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Check, ErrorBox, Field, Slider } from "../components/ui";
-import { AudioInfo, AudioReport, CleaningPlan, DEFAULT_PLAN, audioInfo, cleanAudio, extractAudio, spectrogramUrl } from "../library/videoExtras";
+import { AudioInfo, AudioReport, CleaningPlan, DEFAULT_PLAN, audioInfo, cleanAudio, extractAudio, spectrogramUrl } from "./videoExtras";
 
 export type SoundChoice = "off" | "original" | "cleaned";
 const POLL_MS = 1500;
@@ -23,7 +23,8 @@ const MEASURES: [string, string, (value: number) => string][] = [
 ];
 
 /** The sound of a library video: extract it, clean it with the audio module (its agent's plan
- * for a goal, or the filters chosen here), compare, and choose what plays with the frames. */
+ * for a goal, or the filters chosen here), compare, and choose what plays with the frames
+ * (Compare → Library videos). */
 export function AudioPanel({ videoId, sound, onSound, onAudio }: {
   videoId: string;
   sound: SoundChoice;
