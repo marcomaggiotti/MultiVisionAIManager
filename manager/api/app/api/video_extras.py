@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field, field_validator
 from app.api.dependencies import Library
 from app.ballet.limb_motion import DEFAULT_MIN_DURATION, DEFAULT_THRESHOLD, LIMBS, analyse_limbs
 from app.media import annotated_video
+from app.media.cat_pose import cat_track as build_cat_track
 from app.media.frame_record import FrameRecords
 from app.media.video_audio import AGENTS, GOALS, AudioError, VideoAudio
 from app.media.video_comparison import temporary_target
@@ -285,6 +286,15 @@ async def spectrogram(
     if not job_id:
         raise RecordNotFoundError("clean the audio first: the spectrograms come with the cleaning")
     return Response(await get_audio(request).spectrogram(version, job_id), media_type="image/png")
+
+
+# --- the 3D cat ---------------------------------------------------------------------------------
+@router.get("/api/videos/{video_id}/cat-track")
+def cat_track(video_id: str, library: Library, request: Request) -> dict:
+    """What the studio's preview draws the 3D cat from, for every analysed frame: the steady
+    keypoints, the way the dancer faces (yaw, radians) and the sizes that stay the same."""
+    library.get(video_id)
+    return build_cat_track(_stored_analysis(video_id, request))
 
 
 # --- everything stored about one frame -------------------------------------------------------

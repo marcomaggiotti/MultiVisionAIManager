@@ -77,16 +77,26 @@ persist are written to the feedback log, with the time, so you can jump back to 
   *Play every movement* chains them; one lane per limb shows when it moves.
   **⛶ Full screen** (or a double-click) shows the whole preview, captions and drawings
   included (the video's own full screen, which would show the bare video, is turned off).
-  **🐱 Cat** replaces the skeleton with a cartoon cat drawn on the keypoints (striped tabby,
-  paws, head with ears, blinking eyes and whiskers, a tail swaying faster while the dancer
-  moves; moving limbs glow in their colour); *hide the dancer* blurs her out behind it. The
-  cat **stays on the keypoints**: YOLO's jitter is removed with a centred average over the
-  frames around (no lag, as the whole video is known), keypoints missed for under 0.5 s are
-  filled in, and the preview follows the video between two analysed frames. It **looks
-  round**: limbs are shaded tubes, head and paws shaded spheres lit from the top left, a
-  shadow lies on the floor, the limbs of the far side (the ear YOLO sees less) are darker and
-  behind the body, and the face turns with the head ([`cat.ts`](manager/web/src/live/cat.ts) in the preview,
-  [`cat.py`](manager/api/app/media/cat.py) in the export).
+  **🐱 Cat** replaces the skeleton with a **3D cartoon cat that turns with the dancer**
+  (*hide the dancer* blurs her out behind it). It is built of 3D spheres and capsules on her
+  keypoints: a round striped body with a cream belly, a big head with muzzle, pink nose,
+  blinking green eyes and pointed ears, striped limbs with cream paws, a tail curling to one
+  side and swaying (faster while she moves); moving limbs are tinted and outlined in their
+  colour. **Which way she faces** (the yaw, all round) comes from her keypoints: her shoulders
+  and hips look narrower as she turns, her nose ahead of her neck or the one ear seen tells to
+  which side, her face seen means she is not turned away (even with left and right mirrored),
+  smoothed over time so a pirouette turns continuously
+  ([`cat_pose.py`](manager/api/app/media/cat_pose.py)). Facing the camera the cat shows its face
+  and belly; to the side, its profile, the far limbs behind the body; its back turned, its
+  striped back and its tail. Each joint's depth comes from that angle (the side turned away is
+  farther, the arms held a little in front). A small toon renderer draws it: the nearest
+  surface at each pixel, three soft bands of light from the top left, gloss on the eyes and
+  nose, markings that follow the surface, outlines where a part ends or passes in front of
+  another ([`cat_render.py`](manager/api/app/media/cat_render.py) for the export,
+  [`toonRender.ts`](manager/web/src/live/toonRender.ts) for the preview: the same algorithm).
+  The keypoints stay steady (YOLO's jitter removed with a centred average, short misses
+  filled) and the preview follows the video between analysed frames. API:
+  `GET /api/videos/{id}/cat-track` (steady keypoints, yaw, sizes, per analysed frame).
   **⬇ Export to the library** makes an MP4 of the analysed pictures with the skeleton, the
   moving limbs, the captions and the video's sound (`<name>-annotated.mp4`, not analysed
   again). API: `GET /api/videos/{id}/limb-movements`, `GET/PUT/DELETE /api/videos/{id}/captions`,

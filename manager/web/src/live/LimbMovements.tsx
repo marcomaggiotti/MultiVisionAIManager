@@ -3,7 +3,7 @@ import { api, json } from "../api";
 import { ErrorBox, Slider } from "../components/ui";
 import { LibraryVideo } from "../library/videos";
 import { Recorded, fmtTime } from "./types";
-import { Keypoint, Point, dancerBox, drawCat, steadyTrack, trackAt } from "./cat";
+import { CatTrack, Point, catPoseAt, dancerBox, drawCat } from "./cat";
 import { Karaoke } from "./Karaoke";
 import { AllowedTags, CaptionTags, captionText } from "./captionTags";
 
@@ -24,6 +24,11 @@ const VISIBLE = 0.5;
 const AFTER_SECONDS = 0.6; // played after a movement ends, before stopping
 const LANE_HEIGHT = 16;
 const SAVE_DELAY_MS = 700;
+const BLUR_SHRINK = 12; // the hidden dancer: her region drawn this many times smaller, then scaled back up
+const blurred = document.createElement("canvas");
+const CAT_FPS = 30; // the 3D cat is drawn again at most this often while the video plays
+const CAT_RESOLUTION = 1.5; // canvas pixels per screen pixel for the cat, at most (sharp, and fast enough)
+const CAT_MAX_TORSO = 160; // a larger cat (full screen) is drawn at this torso size and scaled up: ~20 ms a picture
 
 /** Index of the analysed frame at ``seconds`` (times are sorted). */
 function frameAt(times: number[], seconds: number): number {
@@ -156,13 +161,12 @@ export function LimbMovements({ video, frames, onTime, onClose }: {
     const recorded = sameFrames ? frames[at] : frames.find((frame) => Math.abs((frame.sourceTime ?? -1) - data.times[at]) < 0.01);
     return recorded?.result.dancer ? { points: recorded.result.dancer.keypoints, image: recorded.result.image } : null;
   }, [data, frames, sameFrames]);
-  // the cat's keypoints: steady, followed between the analysed frames
-  const catTrack = useMemo(() => {
-    if (!data || character !== "cat") return null;
-    const found = data.times.map((_, at) => keypointsAt(at));
-    const image = found.find((frame) => frame?.image)?.image ?? null;
-    return { image, track: steadyTrack(data.times, found.map((frame) => (frame ? (frame.points as Keypoint[]) : null)), VISIBLE) };
-  }, [data, keypointsAt, character]);
+  // the 3D cat's track (the server's, the same the export uses): steady keypoints, the way she faces
+  const [catTrack, setCatTrack] = useState<CatTrack | null>(null);
+  useEffect(() => {
+    if (character !== "cat" || catTrack) return;
+    api<CatTrack>(`/api/videos/${video.id}/cat-track`).then(setCatTrack).catch(fail);
+  }, [character, video.id, catTrack]);
   const moving = (at: number, limb: string) =>
     (!allowedRef.current || allowedRef.current.includes(limb)) && (data?.speeds[limb]?.[at] ?? 0) >= (data?.threshold ?? threshold);
 
@@ -172,8 +176,10 @@ export function LimbMovements({ video, frames, onTime, onClose }: {
     if (!element || !target || !data) return;
     const width = element.clientWidth, height = element.clientHeight;
     const ratio = window.devicePixelRatio || 1;
-    target.width = width * ratio;
-    target.height = height * ratio;
+    if (target.width !== Math.round(width * ratio) || target.height !== Math.round(height * ratio)) { // resized only when needed
+      target.width = Math.round(width * ratio);
+      target.height = Math.round(height * ratio);
+    }
     const context = target.getContext("2d")!;
     context.setTransform(ratio, 0, 0, ratio, 0, 0);
     context.clearRect(0, 0, width, height);
@@ -193,21 +199,25 @@ export function LimbMovements({ video, frames, onTime, onClose }: {
       context.beginPath(); context.moveTo(x1, y1); context.lineTo(x2, y2); context.stroke();
     };
     if (character === "cat" && catTrack) {
-      const steady = trackAt(data.times, catTrack.track, element.currentTime);
-      if (!steady) return;
+      const pose = catPoseAt(catTrack, element.currentTime); // followed between the analysed frames
+      if (!pose) return;
       const catScale = (element.videoWidth / (catTrack.image?.width ?? element.videoWidth)) * scale;
-      const points = steady.map(([x, y]) => [left + x * catScale, top + y * catScale] as Point);
-      const catSeen = (point: number) => steady[point][2] >= VISIBLE;
+      const points = pose.keypoints.map(([x, y]) => [left + x * catScale, top + y * catScale] as Point);
+      const catSeen = (point: number) => pose.keypoints[point][2] >= VISIBLE;
       const box = hideDancer ? dancerBox(points, catSeen, Math.min(width, height) * 0.05) : null;
-      if (box) { // the dancer, blurred out: the cat takes her place
+      if (box) { // the dancer, blurred out: her region drawn tiny, then scaled back up (a cheap, soft blur)
+        const [bx, by, bw, bh] = [box[0], box[1], box[2] - box[0], box[3] - box[1]];
+        blurred.width = Math.max(1, Math.round(bw / BLUR_SHRINK)); blurred.height = Math.max(1, Math.round(bh / BLUR_SHRINK));
+        blurred.getContext("2d")!.drawImage(element, (bx - left) / scale, (by - top) / scale, bw / scale, bh / scale, 0, 0, blurred.width, blurred.height);
         context.save();
-        context.beginPath(); context.roundRect(box[0], box[1], box[2] - box[0], box[3] - box[1], 24); context.clip();
-        context.filter = "blur(16px)";
-        context.drawImage(element, left, top, element.videoWidth * scale, element.videoHeight * scale);
+        context.beginPath(); context.roundRect(bx, by, bw, bh, 24); context.clip();
+        context.imageSmoothingQuality = "high";
+        context.drawImage(blurred, bx, by, bw, bh);
         context.restore();
       }
       const lit = data.limbs.filter((limb) => moving(at, limb.id)).map((limb) => ({ id: limb.id, color: limb.color }));
-      drawCat(context, points, catSeen, element.currentTime, lit, (point) => steady[point][2]);
+      const onCanvas = { ...pose, keypoints: pose.keypoints.map(([, , confidence], point) => [...points[point], confidence] as [number, number, number]), size: pose.size * catScale };
+      drawCat(context, onCanvas, element.currentTime, lit, Math.min(CAT_RESOLUTION, ratio, CAT_MAX_TORSO / onCanvas.size));
       return;
     }
     const found = keypointsAt(at);
@@ -240,13 +250,14 @@ export function LimbMovements({ video, frames, onTime, onClose }: {
     const at = frameAt(data.times, t);
     if (at !== lastIndex.current) {
       lastIndex.current = at;
+      lastTime.current = t;
       setIndex(at);
       draw(at);
       onTime(data.times[at]);
-    } else if (character === "cat" && (!element.paused || t !== lastTime.current)) {
+    } else if (character === "cat" && t !== lastTime.current && (element.paused || Math.abs(t - lastTime.current) >= 1 / CAT_FPS)) {
+      lastTime.current = t;
       draw(at); // the cat follows the video between analysed frames; the tail sways, the eyes blink
     }
-    lastTime.current = t;
     const current = armedRef.current;
     if (current && !element.paused && t >= current.caption.end + AFTER_SECONDS) {
       if (current.queue.length) {

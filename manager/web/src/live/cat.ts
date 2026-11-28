@@ -1,96 +1,162 @@
-// A cartoon cat drawn on the dancer's keypoints: it takes her place and moves with her.
-// The same drawing is made in the exported video (manager/api/app/media/cat.py).
-//
-// It stays on the keypoints: ``steadyTrack`` removes YOLO's jitter (a centred average,
-// without lag, as the whole video is known) and fills keypoints missed for a moment, and
-// ``trackAt`` follows the video between two analysed frames. It looks round: limbs are shaded
-// tubes and the head a shaded sphere lit from the top left, a shadow lies on the floor, the
-// limbs on the far side (the ear YOLO sees less) are darker, behind the body, and the face
-// turns with the head.
+// The cartoon cat in the dancer's place, in 3D: it takes her place, moves and turns with her.
+// The same cat is drawn in the exported video (manager/api/app/media/cat.py), from the same
+// track: the server's /api/videos/{id}/cat-track gives, for every analysed frame, the steady
+// keypoints and the way she faces (the yaw: 0 facing the camera, +90° facing the picture's
+// right, 180° her back), and the sizes that stay the same all along. The cat is built of 3D
+// spheres and capsules (toonRender.ts): a round striped body with a cream belly, a big head
+// with muzzle, pink nose, green blinking eyes and pointed ears, striped limbs with cream paws,
+// a tail curling to one side and swaying. Turned to the side it shows its profile, its back
+// turned, its back and tail.
+import { CREAM, FUR, OUTLINE, Primitive, Rgb, Vec3, render } from "./toonRender";
 
 export type Point = [number, number];
 export type Keypoint = [number, number, number]; // x, y, confidence
-
-const MAX_GAP_SECONDS = 0.5; // keypoints missed for less than this are filled in
-const SMOOTH_SECONDS = 0.05; // the steadying: gaussian sigma, in seconds
-
-type Palette = { base: string; shade: string; light: string; stripe: string };
-const NEAR: Palette = { base: "#f0a04b", shade: "#b86a24", light: "#ffd390", stripe: "#c8742a" };
-const FAR: Palette = { base: "#cf8538", shade: "#97521a", light: "#e9b06a", stripe: "#a65e22" };
-const PAW: Palette = { base: "#ffe6c7", shade: "#d9b48a", light: "#fffaf1", stripe: "#d9b48a" };
-const OUTLINE = "#3b2414", PINK = "#ff8fa3", EYE = "#7ed957";
-const LIGHT: Point = [-0.55, -0.835]; // the light comes from the top left
-const LIMB_OF: Record<string, [number, number, number]> = {
-  left_arm: [5, 7, 9], right_arm: [6, 8, 10], left_leg: [11, 13, 15], right_leg: [12, 14, 16],
+export type CatTrack = {
+  times: number[]; keypoints: (Keypoint[] | null)[]; yaw: (number | null)[];
+  size: number; shoulder_width: number; hip_width: number; image: { width: number; height: number } | null;
 };
-const LEFT_EAR = 3, RIGHT_EAR = 4, NOSE = 0;
+export type CatPose = { keypoints: Keypoint[]; yaw: number; size: number; shoulderWidth: number; hipWidth: number };
 
-const mid = (a: Point, b: Point): Point => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-const dist = (a: Point, b: Point) => Math.hypot(a[0] - b[0], a[1] - b[1]);
-const shift = (path: Point[], by: number): Point[] => path.map(([x, y]) => [x + LIGHT[0] * by, y + LIGHT[1] * by]);
+const VISIBLE = 0.5;
+const PINK: Rgb = [255, 143, 163], EYE: Rgb = [126, 217, 87], PUPIL: Rgb = [24, 18, 12], LID: Rgb = [205, 128, 52];
+const TORSO = 1, HEAD = 2, EARS = 3, EYES = 4, TAIL = 30;
+const LIMBS: Record<string, { bones: [number, number, number]; group: number; paw: number; radii: [number, number, number]; pawRadius: number }> = {
+  left_arm: { bones: [5, 7, 9], group: 10, paw: 20, radii: [0.12, 0.105, 0.095], pawRadius: 0.13 },
+  right_arm: { bones: [6, 8, 10], group: 11, paw: 21, radii: [0.12, 0.105, 0.095], pawRadius: 0.13 },
+  left_leg: { bones: [11, 13, 15], group: 12, paw: 22, radii: [0.15, 0.13, 0.11], pawRadius: 0.15 },
+  right_leg: { bones: [12, 14, 16], group: 13, paw: 23, radii: [0.15, 0.13, 0.11], pawRadius: 0.15 },
+};
+const GROUP_OF_LIMB: Record<string, number> = { torso: TORSO, head: HEAD, ...Object.fromEntries(Object.entries(LIMBS).map(([id, limb]) => [id, limb.group])) };
+const OUTLINE_PER_SIZE = 45; // the outline: one pixel per this many pixels of torso (the same in cat.py)
+const ARM_FORWARD: Record<number, number> = { 7: 0.2, 9: 0.45, 8: 0.2, 10: 0.45 }; // elbows, wrists: held in front
+const LEG_FORWARD: Record<number, number> = { 13: 0.05, 15: 0.08, 14: 0.05, 16: 0.08 };
 
-/** The keypoints of every analysed frame made steady for the cat (``null``: no dancer). */
-export function steadyTrack(times: number[], frames: (Keypoint[] | null)[], visible: number): (Keypoint[] | null)[] {
-  const count = times.length;
-  const track: Keypoint[][] = times.map(() => Array.from({ length: 17 }, () => [0, 0, 0] as Keypoint));
-  for (let k = 0; k < 17; k++) {
-    const xs = frames.map((points) => points?.[k][0] ?? 0), ys = frames.map((points) => points?.[k][1] ?? 0);
-    const confidences = frames.map((points) => points?.[k][2] ?? 0);
-    const seen = confidences.map((confidence) => confidence >= visible);
-    // keypoints missed for a moment: in a line between the frames around
-    let previous = -1;
-    for (let i = 0; i < count; i++) {
-      if (!seen[i]) continue;
-      if (previous >= 0 && i - previous > 1 && times[i] - times[previous] <= MAX_GAP_SECONDS) {
-        for (let j = previous + 1; j < i; j++) {
-          const share = (times[j] - times[previous]) / (times[i] - times[previous]);
-          xs[j] = xs[previous] + (xs[i] - xs[previous]) * share;
-          ys[j] = ys[previous] + (ys[i] - ys[previous]) * share;
-          confidences[j] = visible;
-          seen[j] = true;
-        }
-      }
-      previous = i;
-    }
-    // the jitter: a gaussian average over the frames around (before and after)
-    for (let i = 0; i < count; i++) {
-      if (!seen[i]) continue;
-      let x = 0, y = 0, confidence = 0, total = 0;
-      const add = (j: number) => {
-        const weight = Math.exp(-0.5 * ((times[j] - times[i]) / SMOOTH_SECONDS) ** 2);
-        x += xs[j] * weight; y += ys[j] * weight; confidence += confidences[j] * weight; total += weight;
-      };
-      for (let j = i; j >= 0 && seen[j] && times[i] - times[j] <= 3 * SMOOTH_SECONDS; j--) add(j);
-      for (let j = i + 1; j < count && seen[j] && times[j] - times[i] <= 3 * SMOOTH_SECONDS; j++) add(j);
-      track[i][k] = [x / total, y / total, Math.max(visible, confidence / total)];
-    }
-  }
-  return track.map((points) => (points.some((point) => point[2] > 0) ? points : null));
-}
+const add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const times = (v: Vec3, k: number): Vec3 => [v[0] * k, v[1] * k, v[2] * k];
+const cross = (a: Vec3, b: Vec3): Vec3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const unit = (v: Vec3): Vec3 => { const l = Math.hypot(...v); return l > 1e-9 ? [v[0] / l, v[1] / l, v[2] / l] : v; };
+const hex = (color: string): Rgb => [parseInt(color.slice(1, 3), 16), parseInt(color.slice(3, 5), 16), parseInt(color.slice(5, 7), 16)];
 
-/** The cat's keypoints at ``seconds``: between the two analysed frames around it. */
-export function trackAt(times: number[], track: (Keypoint[] | null)[], seconds: number): Keypoint[] | null {
-  if (!times.length) return null;
-  if (seconds <= times[0]) return track[0];
-  if (seconds >= times[times.length - 1]) return track[times.length - 1];
-  let low = 0, high = times.length - 1;
-  while (high - low > 1) {
-    const middle = (low + high) >> 1;
-    if (times[middle] <= seconds) low = middle; else high = middle;
-  }
-  const a = track[low], b = track[high], share = (seconds - times[low]) / (times[high] - times[low] || 1);
-  if (!a || !b) return share < 0.5 ? a : b;
-  return a.map((point, k) => {
+/** The cat's pose at ``seconds``: between the two analysed frames around it (the yaw the short way round). */
+export function catPoseAt(track: CatTrack, seconds: number): CatPose | null {
+  const { times: at } = track;
+  if (!at.length) return null;
+  let low = 0, high = at.length - 1;
+  if (seconds <= at[0]) high = 0;
+  else if (seconds >= at[high]) low = high;
+  else while (high - low > 1) { const middle = (low + high) >> 1; if (at[middle] <= seconds) low = middle; else high = middle; }
+  const share = high === low ? 0 : (seconds - at[low]) / (at[high] - at[low]);
+  const a = track.keypoints[low], b = track.keypoints[high];
+  const ya = track.yaw[low], yb = track.yaw[high];
+  const points = !a || !b ? (share < 0.5 ? a : b) : a.map((point, k) => {
     const other = b[k];
-    if (!point[2] || !other[2]) return share < 0.5 ? point : other;
-    return [point[0] + (other[0] - point[0]) * share, point[1] + (other[1] - point[1]) * share, Math.min(point[2], other[2])];
+    if (point[2] < VISIBLE || other[2] < VISIBLE) return share < 0.5 ? point : other;
+    return [point[0] + (other[0] - point[0]) * share, point[1] + (other[1] - point[1]) * share, Math.min(point[2], other[2])] as Keypoint;
   });
+  if (!points) return null;
+  let yaw = (share < 0.5 ? ya ?? yb : yb ?? ya) ?? 0;
+  if (ya != null && yb != null) yaw = ya + ((((yb - ya + Math.PI) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI) - Math.PI) * share;
+  return { keypoints: points, yaw, size: track.size, shoulderWidth: track.shoulder_width, hipWidth: track.hip_width };
 }
 
-/** The side of the dancer away from the camera, from her ears (``null``: facing it, or away). */
-export function farSide(confidence: (index: number) => number): "left" | "right" | null {
-  const difference = confidence(LEFT_EAR) - confidence(RIGHT_EAR);
-  return difference > 0.25 ? "right" : difference < -0.25 ? "left" : null;
+type CatModel = { primitives: Primitive[]; forward: Vec3; left: Vec3; up: Vec3; whiskers: { muzzle: number; root: Vec3; aside: Vec3 }[]; whiskerLength: number; body: { centre: Vec3; length: number } };
+
+/** The cat's spheres and capsules for this pose (null without the dancer's torso). Same as cat_model in cat.py. */
+function catModel(pose: CatPose, seconds: number, moving: boolean): CatModel | null {
+  const points = pose.keypoints;
+  const seen = (index: number) => points[index][2] >= VISIBLE;
+  if (![5, 6, 11, 12].every(seen)) return null;
+  const size = pose.size;
+  const flat = (index: number): Point => [points[index][0], points[index][1]];
+  const neck2: Point = [(points[5][0] + points[6][0]) / 2, (points[5][1] + points[6][1]) / 2];
+  const hips2: Point = [(points[11][0] + points[12][0]) / 2, (points[11][1] + points[12][1]) / 2];
+  const toUnit2 = (v: Point, fallback: Point): Point => { const l = Math.hypot(...v); return l > 1e-6 ? [v[0] / l, v[1] / l] : fallback; };
+  const up2 = toUnit2([neck2[0] - hips2[0], neck2[1] - hips2[1]], [0, -1]);
+  const basis = (upInPicture: Point): [Vec3, Vec3, Vec3] => {
+    const up: Vec3 = [upInPicture[0], upInPicture[1], 0];
+    const across: Vec3 = [-up[1], up[0], 0]; // her left, facing the camera
+    const left = add(times(across, Math.cos(pose.yaw)), [0, 0, Math.sin(pose.yaw)]);
+    return [cross(left, up), left, up];
+  };
+  const [forward, left, up] = basis(up2);
+  // depth of each joint: the side turned away is farther; the arms held a little in front
+  const depth: Record<number, number> = {};
+  depth[5] = (pose.shoulderWidth * size / 2) * left[2]; depth[6] = -depth[5];
+  depth[11] = (pose.hipWidth * size / 2) * left[2]; depth[12] = -depth[11];
+  for (const [joint, ahead] of Object.entries(ARM_FORWARD)) depth[+joint] = depth[[7, 9].includes(+joint) ? 5 : 6] + forward[2] * size * ahead;
+  for (const [joint, ahead] of Object.entries(LEG_FORWARD)) depth[+joint] = depth[[13, 15].includes(+joint) ? 11 : 12] + forward[2] * size * ahead;
+  const joint = (index: number): Vec3 => [points[index][0], points[index][1], depth[index] ?? 0];
+  const neck = times(add(joint(5), joint(6)), 0.5), hips = times(add(joint(11), joint(12)), 0.5);
+  const parts: Primitive[] = [];
+  const part = (a: Vec3, b: Vec3, ra: number, rb: number, options: Partial<Primitive>): number => {
+    parts.push({ a, b, ra: ra * size, rb: rb * size, material: "plain", color: FUR, group: 0, s0: 0, s1: 1, bands: 0, gloss: 0, outline: true, hard: false, ...options });
+    return parts.length - 1;
+  };
+
+  // the tail, from the back of the hips, curling up, to one side, swaying
+  const sway = Math.sin(seconds * (moving ? 7 : 2.4)) * 0.6;
+  const base = sub(sub(hips, times(forward, size * 0.2)), times(up, size * 0.05));
+  const curve = Array.from({ length: 9 }, (_, step) => {
+    const t = step / 8;
+    return add(add(add(base, times(forward, -size * 0.55 * t)), times(up, size * (t * t - 0.12 * t))), times(left, size * (0.5 + sway * 0.4) * t * t));
+  });
+  for (let step = 0; step < 8; step++) {
+    part(curve[step], curve[step + 1], 0.085 - 0.025 * step / 8, 0.085 - 0.025 * (step + 1) / 8 + (step === 7 ? 0.012 : 0),
+      { material: "limb", group: TAIL, s0: step / 8, s1: (step + 1) / 8, bands: 5 });
+  }
+
+  // the body: two capsules side by side (wider than deep) and a round chest, a neck
+  for (const [shoulder, hip] of [[5, 11], [6, 12]]) {
+    part(add(hips, times(sub(joint(hip), hips), 0.5)), add(neck, times(sub(joint(shoulder), neck), 0.5)), 0.25, 0.27, { material: "torso", group: TORSO });
+  }
+  const chest = add(add(hips, times(sub(neck, hips), 0.45)), times(forward, size * 0.06));
+  part(chest, chest, 0.29, 0.29, { material: "torso", group: TORSO, s0: 0.45, s1: 0.45 });
+
+  // the head, on the face's keypoints (or above the neck), tilted with them
+  const face = [0, 1, 2, 3, 4].filter(seen).map(flat);
+  const head2: Point = face.length ? [face.reduce((s, p) => s + p[0], 0) / face.length, face.reduce((s, p) => s + p[1], 0) / face.length]
+    : [neck2[0] + up2[0] * size * 0.5, neck2[1] + up2[1] * size * 0.5];
+  const [headForward, headLeft, headUp] = basis(toUnit2([head2[0] - neck2[0], head2[1] - neck2[1]], up2));
+  const head: Vec3 = [head2[0], head2[1], forward[2] * size * 0.15];
+  part(add(neck, times(up, size * 0.02)), head, 0.16, 0.15, { color: FUR, group: TORSO });
+  const radius = 0.4; // of the head, in torso lengths: a big cartoon head
+  const at = (ahead: number, above: number, aside: number): Vec3 =>
+    add(head, times(add(add(times(headForward, ahead), times(headUp, above)), times(headLeft, aside)), size * radius));
+  for (const sign of [1, -1]) { // the ears: cones, pink inside
+    part(at(0, 0.62, 0.52 * sign), at(-0.05, 1.38, 0.72 * sign), 0.3 * radius, 0.04 * radius, { color: FUR, group: EARS });
+    part(at(0.17, 0.72, 0.52 * sign), at(0.1, 1.22, 0.66 * sign), 0.17 * radius, 0.02 * radius, { color: PINK, group: EARS, outline: false });
+  }
+  part(head, head, radius, radius, { material: "head", group: HEAD });
+  const whiskers: CatModel["whiskers"] = [];
+  for (const sign of [1, -1]) { // the muzzle
+    const centre = at(0.84, -0.3, 0.18 * sign);
+    const muzzle = part(centre, centre, 0.25 * radius, 0.25 * radius, { color: CREAM, group: HEAD });
+    whiskers.push({ muzzle, root: at(0.98, -0.3, 0.32 * sign), aside: times(headLeft, sign) });
+  }
+  const chin = at(0.68, -0.5, 0), nose = at(1, -0.08, 0);
+  part(chin, chin, 0.17 * radius, 0.17 * radius, { color: CREAM, group: HEAD });
+  part(nose, nose, 0.11 * radius, 0.11 * radius, { color: PINK, group: HEAD, gloss: 0.6 });
+  const blink = seconds % 4 < 0.15;
+  for (const sign of [1, -1]) { // the eyes, and their pupils
+    const eye = at(0.72, 0.16, 0.37 * sign);
+    part(eye, eye, 0.24 * radius, 0.24 * radius, { color: blink ? LID : EYE, group: EYES, gloss: blink ? 0 : 0.5, hard: true });
+    if (!blink) {
+      const pupil = add(eye, times(unit(sub(eye, head)), size * radius * 0.15));
+      part(pupil, pupil, 0.12 * radius, 0.12 * radius, { color: PUPIL, group: EYES, gloss: 0.9, outline: false });
+    }
+  }
+
+  // the legs and the arms, striped, with cream paws
+  for (const limb of Object.values(LIMBS)) {
+    if (!limb.bones.every(seen)) continue;
+    const [first, middle, end] = limb.bones.map(joint);
+    part(first, middle, limb.radii[0], limb.radii[1], { material: "limb", group: limb.group, bands: 2.5 });
+    part(middle, end, limb.radii[1], limb.radii[2], { material: "limb", group: limb.group, bands: 2.5 });
+    const paw = add(end, times(forward, size * 0.03));
+    part(paw, paw, limb.pawRadius, limb.pawRadius, { color: CREAM, group: limb.paw });
+  }
+  return { primitives: parts, forward, left, up, whiskers, whiskerLength: size * radius, body: { centre: add(hips, times(sub(neck, hips), 0.5)), length: size } };
 }
 
 /** The box around the dancer (to hide her behind the cat). */
@@ -101,138 +167,52 @@ export function dancerBox(points: Point[], seen: (index: number) => boolean, mar
   return [Math.min(...xs) - margin, Math.min(...ys) - margin * 1.6, Math.max(...xs) + margin, Math.max(...ys) + margin];
 }
 
-/** Draw the cat. ``confidence``: of each keypoint (to find the far side); ``moving``: limbs lit
- * up in their colour (a glow around the cat's limb). */
-export function drawCat(context: CanvasRenderingContext2D, points: Point[], seen: (index: number) => boolean, seconds: number,
-  moving: { id: string; color: string }[], confidence: (index: number) => number = () => 1) {
-  const can = (...indices: number[]) => indices.every(seen);
-  if (!can(5, 6, 11, 12)) return; // no torso: no cat
-  const shoulders = mid(points[5], points[6]), hips = mid(points[11], points[12]);
-  const torso = Math.max(dist(shoulders, hips), 10);
-  const limbWidth = torso * 0.3;
-  const glowOf = (limb: string) => moving.find((item) => item.id === limb)?.color ?? null;
-  const round = (color: string, width: number) => {
-    context.strokeStyle = color; context.lineWidth = Math.max(1, width); context.lineCap = "round"; context.lineJoin = "round";
-  };
-  const stroke = (path: Point[], color: string, width: number) => {
-    round(color, width);
-    context.beginPath();
-    path.forEach(([x, y], index) => (index ? context.lineTo(x, y) : context.moveTo(x, y)));
-    context.stroke();
-  };
-  const disc = ([x, y]: Point, radius: number, color: string) => {
-    context.fillStyle = color; context.beginPath(); context.arc(x, y, radius, 0, Math.PI * 2); context.fill();
-  };
-  // a tube lit from the top left: dark side, body colour, then a highlight along it
-  const tube = (path: Point[], width: number, palette: Palette, glow: string | null) => {
-    if (glow) { context.shadowColor = glow; context.shadowBlur = 18; stroke(path, glow, width + limbWidth * 0.55); context.shadowBlur = 0; }
-    stroke(path, OUTLINE, width + 4);
-    stroke(path, palette.shade, width);
-    stroke(shift(path, width * 0.12), palette.base, width * 0.7);
-    for (let segment = 0; segment < path.length - 1; segment++) { // stripes across the limb
-      const [a, b] = [path[segment], path[segment + 1]];
-      const length = dist(a, b) || 1, nx = -(b[1] - a[1]) / length, ny = (b[0] - a[0]) / length;
-      for (const share of [0.35, 0.65]) {
-        const cx = a[0] + (b[0] - a[0]) * share, cy = a[1] + (b[1] - a[1]) * share, reach = width * 0.36;
-        stroke([[cx - nx * reach, cy - ny * reach], [cx + nx * reach, cy + ny * reach]], palette.stripe, width * 0.16);
-      }
-    }
-    stroke(shift(path, width * 0.26), palette.light, width * 0.22);
-  };
-  // a sphere lit from the top left
-  const sphere = (centre: Point, radius: number, palette: Palette) => {
-    disc(centre, radius, palette.shade);
-    context.strokeStyle = OUTLINE; context.lineWidth = 3; context.stroke(); // the disc's circle
-    disc(shift([centre], radius * 0.16)[0], radius * 0.8, palette.base);
-    disc(shift([centre], radius * 0.48)[0], radius * 0.28, palette.light);
-  };
-  const limb = (id: string, palette: Palette) => {
-    const bones = LIMB_OF[id];
-    if (!can(...bones)) return;
-    const leg = id.endsWith("leg");
-    tube(bones.map((index) => points[index]), limbWidth * (leg ? 1 : 0.85), palette, glowOf(id));
-    const paw = points[bones[2]], radius = limbWidth * (leg ? 0.62 : 0.5);
-    sphere(paw, radius, PAW);
-    disc([paw[0], paw[1] + radius * 0.2], radius * 0.3, PINK);
-  };
+const layer = document.createElement("canvas"); // reused: the rendered cat, before it is drawn on the overlay
 
-  // the shadow on the floor, under the feet
-  const feet = [15, 16].filter(seen).map((index) => points[index]);
-  const floor: Point = feet.length ? [feet.reduce((s, p) => s + p[0], 0) / feet.length, Math.max(...feet.map(([, y]) => y)) + limbWidth * 0.5]
-    : [hips[0], hips[1] + torso * 1.1];
-  const spread = feet.length === 2 ? Math.abs(feet[0][0] - feet[1][0]) / 2 : 0;
+/** Draw the cat (its pose in the canvas's pixels). ``moving``: limbs lit up in their colour.
+ * ``resolution``: canvas pixels per pixel of the pose (the device's pixel ratio, for sharp edges). */
+export function drawCat(context: CanvasRenderingContext2D, pose: CatPose, seconds: number, moving: { id: string; color: string }[], resolution = 1) {
+  const points = pose.keypoints;
+  if (![5, 6, 11, 12].every((index) => points[index][2] >= VISIBLE)) return;
+  floorShadow(context, pose);
+  const large: CatPose = { ...pose, keypoints: points.map(([x, y, c]) => [x * resolution, y * resolution, c]), size: pose.size * resolution };
+  const model = catModel(large, seconds, moving.length > 0);
+  if (!model) return;
+  const glow = new Map<number, Rgb>();
+  for (const { id, color } of moving) {
+    if (GROUP_OF_LIMB[id] != null) glow.set(GROUP_OF_LIMB[id], hex(color));
+    if (LIMBS[id]) glow.set(LIMBS[id].paw, hex(color));
+  }
+  const picture = render(model.primitives, model.forward, model.left, model.up, Math.max(1, Math.round(large.size / OUTLINE_PER_SIZE)), large.size * 0.06, glow, model.body);
+  if (!picture) return;
+  layer.width = picture.image.width; layer.height = picture.image.height; // (resizing clears it)
+  layer.getContext("2d")!.putImageData(picture.image, 0, 0);
+  context.drawImage(layer, picture.x0 / resolution, picture.y0 / resolution, layer.width / resolution, layer.height / resolution);
+  // the whiskers, where the muzzle is seen
+  context.strokeStyle = `rgb(${OUTLINE.join(",")})`;
+  context.lineWidth = Math.max(1, pose.size / 90);
+  context.lineCap = "round";
+  for (const { muzzle, root, aside } of model.whiskers) {
+    const centre = model.primitives[muzzle].a;
+    if (!picture.shows(muzzle, centre[0], centre[1])) continue;
+    for (const tilt of [-0.14, 0, 0.14]) {
+      const tip = add(root, times(add(aside, times(model.up, tilt)), model.whiskerLength));
+      context.beginPath(); context.moveTo(root[0] / resolution, root[1] / resolution); context.lineTo(tip[0] / resolution, tip[1] / resolution); context.stroke();
+    }
+  }
+}
+
+/** A soft shadow on the floor, under the feet. */
+function floorShadow(context: CanvasRenderingContext2D, pose: CatPose) {
+  const points = pose.keypoints, size = pose.size;
+  const feet = [15, 16].filter((index) => points[index][2] >= VISIBLE).map((index) => points[index]);
+  const hips: Point = [(points[11][0] + points[12][0]) / 2, (points[11][1] + points[12][1]) / 2];
+  const centre: Point = feet.length ? [feet.reduce((s, p) => s + p[0], 0) / feet.length, Math.max(...feet.map((p) => p[1])) + size * 0.15] : [hips[0], hips[1] + size * 1.1];
+  const halfWidth = (feet.length === 2 ? Math.abs(feet[0][0] - feet[1][0]) / 2 : 0) + size * 0.45;
   context.save();
-  context.translate(floor[0], floor[1]); context.scale(spread + torso * 0.45, torso * 0.11);
+  context.translate(centre[0], centre[1]); context.scale(halfWidth, size * 0.11);
   const shadow = context.createRadialGradient(0, 0, 0, 0, 0, 1);
   shadow.addColorStop(0, "rgba(0, 0, 0, 0.4)"); shadow.addColorStop(1, "rgba(0, 0, 0, 0)");
   context.fillStyle = shadow; context.beginPath(); context.arc(0, 0, 1, 0, Math.PI * 2); context.fill();
   context.restore();
-
-  // the tail: from the hips, swaying (faster while the dancer moves)
-  const sway = Math.sin(seconds * (moving.length ? 7 : 2.4)) * 0.6;
-  const side = points[12][0] >= points[11][0] ? -1 : 1;
-  const base: Point = [hips[0], hips[1] + torso * 0.05];
-  const control: Point = [hips[0] + side * torso * (0.9 + sway * 0.3), hips[1] + torso * 0.25];
-  const tip: Point = [hips[0] + side * torso * (1.05 + sway * 0.4), hips[1] - torso * (0.45 + sway * 0.3)];
-  const tail = Array.from({ length: 17 }, (_, step) => {
-    const s = step / 16;
-    return [(1 - s) ** 2 * base[0] + 2 * (1 - s) * s * control[0] + s ** 2 * tip[0],
-      (1 - s) ** 2 * base[1] + 2 * (1 - s) * s * control[1] + s ** 2 * tip[1]] as Point;
-  });
-  tube(tail, limbWidth * 0.62, NEAR, null);
-
-  // the far side behind the body, darker; facing the camera: the legs behind, the arms in front
-  const far = farSide(confidence);
-  if (far) { limb(`${far}_leg`, FAR); limb(`${far}_arm`, FAR); }
-  else { limb("left_leg", NEAR); limb("right_leg", NEAR); }
-
-  // the body: a round capsule from the shoulders to the hips, with a cream belly
-  const bodyWidth = Math.min(torso, Math.max(torso * 0.62, Math.max(dist(points[5], points[6]), dist(points[11], points[12])) * 1.3));
-  tube([shoulders, hips], bodyWidth, { ...NEAR, stripe: NEAR.base }, glowOf("torso"));
-  const centre = mid(shoulders, hips);
-  context.fillStyle = PAW.base;
-  context.beginPath();
-  context.ellipse(centre[0], centre[1] + torso * 0.04, bodyWidth * 0.24, torso * 0.36, Math.atan2(hips[1] - shoulders[1], hips[0] - shoulders[0]) - Math.PI / 2, 0, Math.PI * 2);
-  context.fill();
-
-  if (far) { const near = far === "left" ? "right" : "left"; limb(`${near}_leg`, NEAR); limb(`${near}_arm`, NEAR); }
-  else { limb("left_arm", NEAR); limb("right_arm", NEAR); }
-
-  // the head: a sphere on the face's keypoints; ears, eyes (blinking), nose, whiskers, turned with her face
-  const face = [0, 1, 2, 3, 4].filter(seen).map((index) => points[index]);
-  const head: Point = face.length ? [face.reduce((s, p) => s + p[0], 0) / face.length, face.reduce((s, p) => s + p[1], 0) / face.length]
-    : [shoulders[0] + (shoulders[0] - hips[0]) * 0.45, shoulders[1] + (shoulders[1] - hips[1]) * 0.45];
-  const radius = torso * 0.34;
-  const up = (() => { const dx = head[0] - shoulders[0], dy = head[1] - shoulders[1], l = Math.hypot(dx, dy) || 1; return [dx / l, dy / l] as Point; })();
-  const across: Point = [-up[1], up[0]];
-  const turn = seen(NOSE) ? Math.max(-0.6, Math.min(0.6, ((points[NOSE][0] - head[0]) * across[0] + (points[NOSE][1] - head[1]) * across[1]) / radius)) : 0;
-  const at = (u: number, a: number): Point => [head[0] + up[0] * u * radius + across[0] * a * radius, head[1] + up[1] * u * radius + across[1] * a * radius];
-  const feature = (u: number, a: number) => at(u, a * (1 - Math.abs(turn) * 0.35) + turn * 0.55);
-  const polygon = (corners: Point[], fill: string, outline: boolean) => {
-    context.fillStyle = fill; context.beginPath();
-    corners.forEach(([x, y], index) => (index ? context.lineTo(x, y) : context.moveTo(x, y)));
-    context.closePath(); context.fill();
-    if (outline) { context.strokeStyle = OUTLINE; context.lineWidth = 3; context.lineJoin = "round"; context.stroke(); }
-  };
-  for (const sign of [-1, 1]) { // ears
-    const a = (value: number) => sign * value + turn * 0.25;
-    polygon([at(0.55, a(0.95)), at(1.45, a(0.7)), at(0.85, a(0.15))], NEAR.base, true);
-    polygon([at(0.7, a(0.8)), at(1.2, a(0.68)), at(0.85, a(0.35))], PINK, false);
-  }
-  sphere(head, radius, NEAR);
-  for (const offset of [-0.25, 0, 0.25]) disc(feature(0.78, offset), radius * 0.08, NEAR.stripe);
-  const blink = seconds % 4 < 0.15;
-  for (const sign of [-1, 1]) {
-    if (Math.abs(turn) > 0.45 && Math.sign(turn) !== sign) continue; // in profile: the far eye is hidden
-    const [x, y] = feature(0.18, sign * 0.4);
-    if (blink) { stroke([[x - radius * 0.14, y], [x + radius * 0.14, y]], OUTLINE, 3); continue; }
-    disc([x, y], radius * 0.17, EYE);
-    context.fillStyle = OUTLINE; context.beginPath(); context.ellipse(x, y, radius * 0.05, radius * 0.14, Math.atan2(up[1], up[0]), 0, Math.PI * 2); context.fill();
-    disc([x + radius * 0.05, y - radius * 0.06], radius * 0.04, "#fff");
-  }
-  const nose = feature(-0.2, 0);
-  polygon([feature(-0.12, -0.1), feature(-0.12, 0.1), feature(-0.27, 0)], PINK, false);
-  stroke([nose, feature(-0.42, -0.14)], OUTLINE, 2);
-  stroke([nose, feature(-0.42, 0.14)], OUTLINE, 2);
-  for (const sign of [-1, 1]) for (const tilt of [-0.12, 0, 0.12]) stroke([feature(-0.25, sign * 0.35), feature(-0.25 + tilt, sign * 1.25)], OUTLINE, 2);
 }

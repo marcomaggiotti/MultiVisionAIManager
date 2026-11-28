@@ -4,6 +4,15 @@ export type Release = { version: string; date: string; title: string; changes: s
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.38.0", date: "2026-11-28", title: "🐱 A 3D cat that turns with the dancer",
+    changes: [
+      "🎬 Preview and exported videos: the cat is now 3D, built of shaded spheres and capsules on her keypoints: round striped body with a cream belly, big head with muzzle, pink nose, blinking green eyes and pointed ears, striped limbs with cream paws, a tail curling to one side.",
+      "It turns as she turns: which way she faces is found from her keypoints (shoulders and hips narrower as she turns, nose or ear for the side, smoothed so a pirouette turns continuously). Facing the camera: face and belly; to the side: its profile, the far limbs behind; her back turned: its striped back and its tail.",
+      "The same renderer draws the preview and the export, so they match; a mirrored picture (left and right swapped) no longer shows the cat's back when her face is seen.",
+      "Smoother preview: the cat is drawn at most 30 times a second, and the hidden dancer's blur is much cheaper.",
+    ],
+  },
+  {
     version: "0.37.0", date: "2026-11-28", title: "🗄 Frame record: everything the databases hold about a frame",
     changes: [
       "Analysis → Video keypoints: clicking a frame (picture or table row) opens its record, table by table, each with its database file and the query that read it: videos, video_analyses, pictures (the frame's JPEG and the analysis document) and the frame's entry in that document, video_keypoints, keypoint_adjustments, video_notes, video_captions (the captions shown at the frame, their tags, the allowed tags), snapshots, live_sessions, video_audio and the related videos.",

@@ -26,7 +26,8 @@ from PIL import Image, ImageDraw
 
 from app.ballet.limb_motion import LIMBS
 from app.media import ffmpeg
-from app.media.cat import draw_cat, hide_dancer, steady_track
+from app.media.cat import CatPose, draw_cat, hide_dancer
+from app.media.cat_pose import cat_track
 from app.media.video_comparison import VISIBLE, _font, draw_skeleton
 
 SCHEMA = "CREATE TABLE IF NOT EXISTS video_captions (video_id TEXT PRIMARY KEY, data TEXT, updated REAL)"
@@ -182,6 +183,12 @@ def draw_karaoke(overlay: Image.Image, captions: list[dict], seconds: float, ant
     overlay.alpha_composite(band, (margin, overlay.size[1] - band.size[1] - margin))
 
 
+def _torso_length(keypoints: list) -> float:
+    shoulders = ((keypoints[5][0] + keypoints[6][0]) / 2, (keypoints[5][1] + keypoints[6][1]) / 2)
+    hips = ((keypoints[11][0] + keypoints[12][0]) / 2, (keypoints[11][1] + keypoints[12][1]) / 2)
+    return max(10.0, ((shoulders[0] - hips[0]) ** 2 + (shoulders[1] - hips[1]) ** 2) ** 0.5)
+
+
 def draw_annotated_frame(
     picture: bytes,
     frame: dict,
@@ -202,7 +209,8 @@ def draw_annotated_frame(
     if keypoints and character == "cat":
         if hide:
             hide_dancer(image, keypoints)
-        draw_cat(overlay, keypoints, seconds, {limb.id: limb.color for limb in LIMBS if limb.id in moving})
+        pose = frame.get("cat") or CatPose(keypoints, 0.0, _torso_length(keypoints))
+        draw_cat(overlay, pose, seconds, {limb.id: limb.color for limb in LIMBS if limb.id in moving})
     elif keypoints:
         draw_skeleton(draw, keypoints, STILL_COLOR, max(1, side // 260), joints=False)
         for limb in LIMBS:
@@ -256,15 +264,17 @@ async def render_annotated_video(
     )  # fmt: skip
     frames = analysis["frames"]
     threshold = limbs["threshold"]
-    if character == "cat":  # the cat on steady keypoints (no jitter, short misses filled)
-        track = steady_track(
-            [frame["source_time"] for frame in frames],
-            [(frame.get("dancer") or {}).get("keypoints") for frame in frames],
-        )
+    if character == "cat":  # the 3D cat: steady keypoints, the way she faces, the same sizes all along
+        track = cat_track(analysis)
         frames = [
-            {**frame, "dancer": {"keypoints": points} if points else None}
-            for frame, points in zip(frames, track, strict=True)
-        ]
+            {
+                **frame,
+                "dancer": {"keypoints": points} if points else None,
+                "cat": CatPose(points, yaw or 0.0, track["size"], track["shoulder_width"], track["hip_width"])
+                if points else None,
+            }
+            for frame, points, yaw in zip(frames, track["keypoints"], track["yaw"], strict=True)
+        ]  # fmt: skip
     try:
         for position, frame in enumerate(frames):
             picture = frame_picture(frame["index"])
