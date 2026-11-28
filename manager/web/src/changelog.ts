@@ -4,6 +4,15 @@ export type Release = { version: string; date: string; title: string; changes: s
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.37.0", date: "2026-11-28", title: "🗄 Frame record: everything the databases hold about a frame",
+    changes: [
+      "Analysis → Video keypoints: clicking a frame (picture or table row) opens its record, table by table, each with its database file and the query that read it: videos, video_analyses, pictures (the frame's JPEG and the analysis document) and the frame's entry in that document, video_keypoints, keypoint_adjustments, video_notes, video_captions (the captions shown at the frame, their tags, the allowed tags), snapshots, live_sessions, video_audio and the related videos.",
+      "Also the movement of each limb at the frame (speed, moving or not, the movement going on), computed from the analysis and marked so.",
+      "Readable values: dates next to timestamps, the 17 keypoints as a table (name, x, y, confidence), nested data unfolded; pictures' bytes and live sessions' data shown by their size.",
+      "◀ ▶ (or ← →) go through the frames, ⬇ JSON downloads the record, Esc closes it; 🗄 Database record reopens it from the frame's view.",
+    ],
+  },
+  {
     version: "0.36.0", date: "2026-11-27", title: "🏷 Caption tags: add, remove, choose the allowed ones",
     changes: [
       "🎬 Preview: each caption's tags (the limbs it is about) have a ✕ to remove one and a ＋ tag menu to add one. A text never rewritten follows its tags (“Right leg and left leg move”); a rewritten one is kept.",

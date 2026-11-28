@@ -142,6 +142,16 @@ persist are written to the feedback log, with the time, so you can jump back to 
   lines (small picture, time, movement) and keypoints 0–16 as columns (x, y). **✎ Adjust keypoints** on the
   selected frame replaces its keypoints (and keeps the fix as a keypoint adjustment for later analyses). API: `PUT /api/keypoint-tracks`,
   `GET/DELETE /api/videos/{id}/keypoints?start&end`.
+- **🗄 Frame record**: clicking a frame in *Analysis → Video keypoints* opens everything the
+  databases hold about it, table by table, each with its database file and the query that
+  read it ([`frame_record.py`](manager/api/app/media/frame_record.py)). A frame lives in two
+  SQLite files, linked by the video id, its media key (`name|size`) and the frame's time:
+  `manager.sqlite3` (`videos`, `video_analyses`, `video_keypoints`, `keypoint_adjustments`,
+  `video_notes`, `video_captions` with the caption tags, `snapshots`, `live_sessions`,
+  `video_audio`) and `pictures.sqlite3` (`pictures`: the frame's JPEG and the analysis
+  document, whose `frames[i]` is the frame). The limbs' movement at the frame is computed and
+  marked so. Keypoints show as a table, timestamps with their date; picture bytes by their
+  size. API: `GET /api/videos/{id}/frame-record?t=<seconds>`.
 - **Snapshot library**: every snapshot is saved in the manager (the clean frame, with its
   video, time, recognised movement and corrections): *Library → 📷 Snapshots* to view,
   annotate, download, delete or open one in YOLO, CLIP or the VLM; those tabs (and the VLM /

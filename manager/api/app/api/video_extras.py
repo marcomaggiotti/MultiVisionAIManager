@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field, field_validator
 from app.api.dependencies import Library
 from app.ballet.limb_motion import DEFAULT_MIN_DURATION, DEFAULT_THRESHOLD, LIMBS, analyse_limbs
 from app.media import annotated_video
+from app.media.frame_record import FrameRecords
 from app.media.video_audio import AGENTS, GOALS, AudioError, VideoAudio
 from app.media.video_comparison import temporary_target
 from app.media.video_notes import MAX_NOTE_CHARACTERS, VideoNotes
@@ -284,3 +285,18 @@ async def spectrogram(
     if not job_id:
         raise RecordNotFoundError("clean the audio first: the spectrograms come with the cleaning")
     return Response(await get_audio(request).spectrogram(version, job_id), media_type="image/png")
+
+
+# --- everything stored about one frame -------------------------------------------------------
+@router.get("/api/videos/{video_id}/frame-record")
+def frame_record(
+    video_id: str,
+    request: Request,
+    t: Annotated[float, Query(ge=0, description="The frame's time in the video (seconds)")],
+) -> dict:
+    """The analysed frame nearest to ``t``, as the databases hold it: one section per table
+    (database file, table, query, rows), from the video's row to the frame's keypoints,
+    corrections, notes, caption tags, snapshots and limb movement."""
+    state = request.app.state
+    records = FrameRecords(state.store.database_path, state.library, state.pictures, state.video_analyses)
+    return records.frame_record(video_id, t)

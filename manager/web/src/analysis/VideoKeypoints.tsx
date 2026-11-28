@@ -14,6 +14,7 @@ import { SnapshotTarget, sendSnapshot } from "../live/snapshot";
 import { useLiveSession } from "../live/LiveSessionContext";
 import { NotesPanel } from "../live/NotesPanel";
 import { VideoNote, listNotes } from "../library/videoExtras";
+import { FrameRecord } from "./FrameRecord";
 
 const VISIBLE = 0.5;
 const FOCUS_MARGIN_S = 5; // a focused frame opens with this much video around it
@@ -77,6 +78,8 @@ export function VideoKeypoints({ focus = null }: { focus?: FrameFocus | null }) 
   const [end, setEnd] = useState(10);
   const [frames, setFrames] = useState<TrackFrame[] | null>(null);
   const [selected, setSelected] = useState(0);
+  const [recordOpen, setRecordOpen] = useState(false); // the selected frame's database record
+  const openRecord = (index: number) => { setSelected(index); setRecordOpen(true); };
   const [keypoint, setKeypoint] = useState(16);
   const [hovered, setHovered] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -274,7 +277,7 @@ export function VideoKeypoints({ focus = null }: { focus?: FrameFocus | null }) 
                 </thead>
                 <tbody>
                   {frames.map((frame, index) => (
-                    <tr key={frame.source_time} className={`kp-row ${index === selected ? "on" : ""}`} onClick={() => setSelected(index)}>
+                    <tr key={frame.source_time} className={`kp-row ${index === selected ? "on" : ""}`} onClick={() => openRecord(index)}>
                       <td className="kp-sticky">
                         <div className="frame-picture">
                           <img src={frameUrl(video.id, frame.source_time, THUMBNAIL_SIDE)} alt="" loading="lazy" />
@@ -302,7 +305,7 @@ export function VideoKeypoints({ focus = null }: { focus?: FrameFocus | null }) 
           ) : (
           <div ref={grid} className="frame-grid">
             {frames.map((frame, index) => (
-              <button key={frame.source_time} className={`frame-thumb ${index === selected ? "on" : ""}`} onClick={() => setSelected(index)}
+              <button key={frame.source_time} className={`frame-thumb ${index === selected ? "on" : ""}`} onClick={() => openRecord(index)}
                 title={`${frame.source_time.toFixed(2)} s${frame.movement ? ` · ${frame.movement}` : ""}`}>
                 <div className="frame-picture">
                   <img src={frameUrl(video.id, frame.source_time, THUMBNAIL_SIDE)} alt="" loading="lazy" />
@@ -322,6 +325,7 @@ export function VideoKeypoints({ focus = null }: { focus?: FrameFocus | null }) 
                   <button className="small" onClick={() => setEditing(true)} title="Drag the keypoints to where the joints really are; they replace this frame's">
                     ✎ {current.keypoints ? "Adjust keypoints" : "Place keypoints"}
                   </button>
+                  <button className="small ghost" onClick={() => setRecordOpen(true)} title="Everything the databases hold about this frame, table by table">🗄 Database record</button>
                   <button className="small ghost" disabled={selected === 0} onClick={() => setSelected(selected - 1)}>◀ previous</button>
                   <span className="small muted">{selected + 1} / {frames.length}</span>
                   <button className="small ghost" disabled={selected === frames.length - 1} onClick={() => setSelected(selected + 1)}>next ▶</button>
@@ -352,6 +356,11 @@ export function VideoKeypoints({ focus = null }: { focus?: FrameFocus | null }) 
                   ))}
                 </div>
               </Card>
+              {recordOpen && video && (
+                <FrameRecord videoId={video.id} seconds={current.source_time} onClose={() => setRecordOpen(false)}
+                  onPrevious={selected > 0 ? () => setSelected(selected - 1) : null}
+                  onNext={selected < frames.length - 1 ? () => setSelected(selected + 1) : null} />
+              )}
               {editing && (
                 <KeypointEditor imageSrc={frameUrl(video.id, current.source_time, editorSide)} keypoints={current.keypoints}
                   title={`Adjust keypoints · ${current.source_time.toFixed(3)} s`}

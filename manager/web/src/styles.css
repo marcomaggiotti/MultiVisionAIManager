@@ -524,3 +524,40 @@ pre.architecture { font-size: 11px; line-height: 1.45; overflow-x: auto; backgro
 .karaoke-word.sung { color: #ffd23f; }
 .karaoke-word.now { color: #ffffff; text-decoration: underline; text-decoration-color: #ffd23f; text-underline-offset: 5px; }
 .karaoke-break { display: block; height: 0; }
+
+/* ---- frame record: the databases' rows of one frame ---- */
+.frame-record { width: min(1400px, 100%); height: calc(100vh - 32px); overflow: hidden; display: flex; flex-direction: column; gap: 10px; }
+.frame-record-layout { flex: 1; display: grid; grid-template-columns: 260px 1fr; gap: 14px; min-height: 0; }
+.frame-record-side { overflow: auto; display: flex; flex-direction: column; gap: 3px; min-height: 0; }
+.frame-record-side img { width: 100%; border-radius: 8px; margin-bottom: 8px; background: #000; }
+.db-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.db-toc { display: flex; justify-content: space-between; gap: 6px; padding: 3px 8px; font-weight: 400; background: transparent; border: 1px solid transparent; color: var(--fg); text-align: left; }
+.db-toc:hover { border-color: var(--line); }
+.db-toc.empty { color: var(--muted); }
+.db-count { font-size: 11px; padding: 0 6px; border-radius: 999px; background: var(--panel-2); }
+.frame-record-body { display: flex; flex-direction: column; gap: 12px; min-width: 0; min-height: 0; overflow: auto; padding-right: 4px; }
+.db-grid-wrap { overflow-x: auto; }
+.db-grid { border-collapse: collapse; font-size: 12px; }
+.db-grid th { text-align: left; padding: 3px 14px 3px 0; color: #ffd23f; font-weight: 500; white-space: nowrap; }
+.db-grid td { padding: 3px 14px 3px 0; border-top: 1px solid rgba(255,255,255,.05); vertical-align: top; }
+.db-section { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); scroll-margin-top: 8px; }
+.db-badge { font-family: ui-monospace, monospace; font-size: 11px; padding: 1px 6px; border-radius: 6px; background: var(--panel-2); color: var(--muted); }
+.db-query { display: block; font-size: 11px; padding: 4px 8px; border-radius: 6px; background: rgba(0,0,0,.35); color: #9fd3ff; overflow-x: auto; white-space: pre; }
+.db-fields { width: 100%; border-collapse: collapse; font-size: 12px; }
+.db-fields > tbody > tr > th { width: 1%; white-space: nowrap; text-align: left; vertical-align: top; padding: 3px 10px 3px 0; color: #ffd23f; font-weight: 500; }
+.db-fields > tbody > tr > td { padding: 3px 0; vertical-align: top; border-bottom: 1px solid rgba(255,255,255,.05); word-break: break-word; }
+.db-fields.nested { margin: 2px 0 2px 4px; padding-left: 8px; border-left: 2px solid var(--line); }
+.db-fields.nested > tbody > tr > th { color: #9fd3ff; }
+.db-fields + .db-fields:not(.nested) { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--line); }
+.db-text { white-space: pre-wrap; }
+.db-list { display: flex; flex-direction: column; gap: 4px; }
+.db-json { max-height: 220px; overflow: auto; margin: 0; }
+.db-keypoints { border-collapse: collapse; font-size: 11px; font-family: ui-monospace, monospace; }
+.db-keypoints th, .db-keypoints td { padding: 1px 10px 1px 0; text-align: right; }
+.db-keypoints th:nth-child(2), .db-keypoints td:nth-child(2) { text-align: left; }
+.db-keypoints tr.low { opacity: .45; }
+@media (max-width: 760px) {
+  .frame-record { height: auto; overflow: visible; }
+  .frame-record-layout { grid-template-columns: 1fr; }
+  .frame-record-side, .frame-record-body { overflow: visible; }
+}
