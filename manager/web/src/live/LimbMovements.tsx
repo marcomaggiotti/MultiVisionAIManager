@@ -5,6 +5,7 @@ import { LibraryVideo } from "../library/videos";
 import { Recorded, fmtTime } from "./types";
 import { Keypoint, Point, dancerBox, drawCat, steadyTrack, trackAt } from "./cat";
 import { Karaoke } from "./Karaoke";
+import { AllowedTags, CaptionTags, captionText } from "./captionTags";
 
 type LimbInfo = { id: string; label: string; color: string; bones: [number, number][] };
 type Movement = { limb: string; start: number; end: number; peak: number; mean: number; movement: string | null };
@@ -13,7 +14,8 @@ type LimbAnalysis = {
   speeds: Record<string, (number | null)[]>; movements: Movement[];
 };
 export type Caption = { start: number; end: number; text: string; limbs: string[] };
-type CaptionTrack = { anticipation: number; threshold: number; captions: Caption[]; saved: boolean };
+// allowed_limbs: the tags allowed in the captions and lit up (null: not chosen yet, every tag)
+type CaptionTrack = { anticipation: number; threshold: number; captions: Caption[]; allowed_limbs: string[] | null; saved: boolean };
 type RenderJob = { id: string; status: "running" | "done" | "failed"; progress: number; video: LibraryVideo | null; error: string | null };
 
 const SENSITIVITY: [string, number][] = [["Large movements only", 0.6], ["Normal", 0.3], ["Small movements too", 0.18]];
@@ -55,11 +57,17 @@ export function LimbMovements({ video, frames, onTime, onClose }: {
   const [job, setJob] = useState<RenderJob | null>(null);
   const [character, setCharacter] = useState<"skeleton" | "cat">("skeleton"); // what is drawn on the dancer
   const [hideDancer, setHideDancer] = useState(true); // with the cat: the dancer is blurred out behind it
+  const [tagsOpen, setTagsOpen] = useState(false); // the allowed tags asked again
   const player = useRef<HTMLVideoElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
+  const stage = useRef<HTMLDivElement>(null);
+  const [fullScreen, setFullScreen] = useState(false);
   const armedRef = useRef(armed);
   armedRef.current = armed;
   const anticipation = track?.anticipation ?? 2;
+  const allowed = track?.allowed_limbs ?? null;
+  const allowedRef = useRef(allowed); // read by the drawing
+  allowedRef.current = allowed;
 
   const fail = (failure: unknown) => setError(failure instanceof Error ? failure.message : String(failure));
   useEffect(() => {
@@ -84,7 +92,7 @@ export function LimbMovements({ video, frames, onTime, onClose }: {
     window.clearTimeout(pendingSave.current);
     pendingSave.current = window.setTimeout(async () => {
       try {
-        await api(`/api/videos/${video.id}/captions`, json("PUT", { anticipation: next.anticipation, threshold, captions: next.captions }));
+        await api(`/api/videos/${video.id}/captions`, json("PUT", { anticipation: next.anticipation, threshold, captions: next.captions, allowed_limbs: next.allowed_limbs ?? null }));
         setSaving("saved");
       } catch (failure) { fail(failure); }
     }, SAVE_DELAY_MS);
@@ -92,9 +100,16 @@ export function LimbMovements({ video, frames, onTime, onClose }: {
   const changeCaption = (position: number, changes: Partial<Caption>) =>
     track && changeTrack({ ...track, captions: track.captions.map((caption, other) => (other === position ? { ...caption, ...changes } : caption)) });
   const removeCaption = (position: number) => track && changeTrack({ ...track, captions: track.captions.filter((_, other) => other !== position) });
+  const proposed = (tags: string[]) =>
+    api<CaptionTrack>(`/api/videos/${video.id}/captions?threshold=${threshold}&fresh=true&allowed=${tags.join(",")}`);
   const proposeAgain = async () => {
     if (!window.confirm("Forget the edited captions and propose them again from the movements found?")) return;
     try {
+      if (allowed) { // with the allowed tags, kept
+        const fresh = await proposed(allowed);
+        changeTrack({ ...fresh, allowed_limbs: allowed });
+        return;
+      }
       await api(`/api/videos/${video.id}/captions`, { method: "DELETE" });
       setSaving("idle");
       setTrack(null);
@@ -103,6 +118,38 @@ export function LimbMovements({ video, frames, onTime, onClose }: {
   };
 
   const limbs = useMemo(() => new Map((data?.limbs ?? []).map((limb) => [limb.id, limb])), [data]);
+  const label = (id: string) => limbs.get(id)?.label ?? id;
+  const movementCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const movement of data?.movements ?? []) counts[movement.limb] = (counts[movement.limb] ?? 0) + 1;
+    return counts;
+  }, [data]);
+  // a caption's tags changed: its text follows, unless it was rewritten
+  const changeTags = (position: number, tags: string[]) => {
+    if (!track) return;
+    const caption = track.captions[position];
+    const proposedText = caption.text === captionText(caption.limbs, label);
+    changeCaption(position, { limbs: tags, text: proposedText && tags.length ? captionText(tags, label) : caption.text });
+  };
+  // the allowed tags chosen: the first time the captions are proposed with them; after edits,
+  // the tags no longer allowed leave the captions (a caption left without tags, never rewritten, goes)
+  const applyAllowed = async (tags: string[]) => {
+    if (!track) return;
+    setTagsOpen(false);
+    try {
+      if (!track.saved) {
+        changeTrack({ ...(await proposed(tags)), allowed_limbs: tags });
+        return;
+      }
+      const kept = track.captions.flatMap((caption) => {
+        const left = caption.limbs.filter((id) => tags.includes(id));
+        const proposedText = caption.text === captionText(caption.limbs, label);
+        if (!left.length && caption.limbs.length && proposedText) return [];
+        return [{ ...caption, limbs: left, text: proposedText && left.length ? captionText(left, label) : caption.text }];
+      });
+      changeTrack({ ...track, captions: kept, allowed_limbs: tags });
+    } catch (failure) { fail(failure); }
+  };
   const sameFrames = !!data && frames.length === data.times.length;
   const keypointsAt = useCallback((at: number) => {
     if (!data) return null;
@@ -116,7 +163,8 @@ export function LimbMovements({ video, frames, onTime, onClose }: {
     const image = found.find((frame) => frame?.image)?.image ?? null;
     return { image, track: steadyTrack(data.times, found.map((frame) => (frame ? (frame.points as Keypoint[]) : null)), VISIBLE) };
   }, [data, keypointsAt, character]);
-  const moving = (at: number, limb: string) => (data?.speeds[limb]?.[at] ?? 0) >= (data?.threshold ?? threshold);
+  const moving = (at: number, limb: string) =>
+    (!allowedRef.current || allowedRef.current.includes(limb)) && (data?.speeds[limb]?.[at] ?? 0) >= (data?.threshold ?? threshold);
 
   // the skeleton over the video: still limbs grey, moving limbs in their colour
   const draw = useCallback((at: number) => {
@@ -222,8 +270,28 @@ export function LimbMovements({ video, frames, onTime, onClose }: {
     window.addEventListener("resize", redraw);
     return () => window.removeEventListener("resize", redraw);
   }, [draw]);
+
+  // full screen: the whole stage (the video, the cat or skeleton, the karaoke), never the bare
+  // video, which would leave the drawings and the captions behind
+  const toggleFullScreen = () => {
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void stage.current?.requestFullscreen().catch(() => {});
+  };
   useEffect(() => {
-    const close = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    const changed = () => {
+      if (document.fullscreenElement === player.current) { // the browser's own (e.g. a shortcut): the stage instead
+        void document.exitFullscreen().then(() => stage.current?.requestFullscreen()).catch(() => {});
+        return;
+      }
+      setFullScreen(document.fullscreenElement === stage.current);
+      requestAnimationFrame(() => draw(lastIndex.current >= 0 ? lastIndex.current : 0));
+    };
+    document.addEventListener("fullscreenchange", changed);
+    return () => document.removeEventListener("fullscreenchange", changed);
+  }, [draw]);
+  useEffect(() => {
+    // Esc closes the preview; in full screen it only leaves full screen
+    const close = (event: KeyboardEvent) => { if (event.key === "Escape" && !document.fullscreenElement) onClose(); };
     window.addEventListener("keydown", close);
     return () => window.removeEventListener("keydown", close);
   }, [onClose]);
@@ -253,6 +321,8 @@ export function LimbMovements({ video, frames, onTime, onClose }: {
 
   const t = data?.times[index] ?? 0;
   const captions = track?.captions ?? [];
+  // first proposal of this video's captions: which tags are allowed is asked before they are shown
+  const askTags = !!track && !track.saved && track.allowed_limbs == null;
   const shownCaptions = captions.filter((caption) => caption.start - anticipation <= t && t <= caption.end);
   const duration = data?.times[data.times.length - 1] ?? video.duration;
   const x = (seconds: number) => `${(seconds / Math.max(duration, 0.001)) * 100}%`;
@@ -289,19 +359,32 @@ export function LimbMovements({ video, frames, onTime, onClose }: {
       <ErrorBox error={error} />
 
       <div className="limb-layout">
-        <div className="limb-video">
-          <video ref={player} src={video.url} controls playsInline preload="auto"
+        <div className="limb-video" ref={stage}>
+          <video ref={player} src={video.url} controls playsInline preload="auto" controlsList="nofullscreen" disablePictureInPicture
+            onDoubleClick={(event) => { event.preventDefault(); toggleFullScreen(); }}
             onSeeked={() => { lastIndex.current = -1; tick(); }} onLoadedData={() => { lastIndex.current = -1; tick(); }} />
           <canvas ref={canvas} className="limb-overlay" />
           <Karaoke captions={shownCaptions} seconds={t} anticipation={anticipation} />
+          <button type="button" className="limb-fullscreen" onClick={toggleFullScreen}
+            title={fullScreen ? "Leave full screen (Esc)" : "Full screen, with the captions and the drawings"}>
+            {fullScreen ? "✕" : "⛶"}
+          </button>
         </div>
 
         <div className="limb-list">
           <div className="row spread small muted">
             <span>{captions.length} caption{captions.length === 1 ? "" : "s"} · {track?.saved ? (saving === "pending" ? "saving…" : "edited, saved") : "proposed"}</span>
-            {track?.saved && <button className="small ghost" onClick={proposeAgain} title="Forget the edits">↺ Propose again</button>}
+            <span className="row" style={{ gap: 4 }}>
+              {track && <button className="small ghost" onClick={() => setTagsOpen(true)}
+                title={allowed ? `Allowed tags: ${allowed.map(label).join(", ") || "none"}` : "Choose the tags allowed in the captions"}>🏷 Tags</button>}
+              {track?.saved && <button className="small ghost" onClick={proposeAgain} title="Forget the edits">↺ Propose again</button>}
+            </span>
           </div>
-          {captions.map((caption, position) => {
+          {data && track && (askTags || tagsOpen) && (
+            <AllowedTags limbs={data.limbs} counts={movementCounts} initial={allowed} edited={track.saved}
+              onApply={applyAllowed} onCancel={askTags ? null : () => setTagsOpen(false)} />
+          )}
+          {!askTags && captions.map((caption, position) => {
             const now = t >= caption.start - anticipation && t <= caption.end;
             return (
               <div key={`${caption.start}-${position}`} className={`limb-moment ${armed?.caption === caption ? "on" : ""} ${now ? "now" : ""}`}>
@@ -309,15 +392,13 @@ export function LimbMovements({ video, frames, onTime, onClose }: {
                   <button className="link mono small" onClick={() => playFrom(caption)} title={`Play from ${anticipation} s before`}>▶ {fmtTime(caption.start)}–{fmtTime(caption.end)}</button>
                   <button className="small ghost danger-text" onClick={() => removeCaption(position)} title="Remove this caption">✕</button>
                 </div>
-                <span className="limb-moment-limbs">
-                  {caption.limbs.map((id) => <span key={id} className="limb-dot" style={{ background: limbs.get(id)?.color }}>{limbs.get(id)?.label ?? id}</span>)}
-                </span>
+                <CaptionTags tags={caption.limbs} limbs={data?.limbs ?? []} allowed={allowed} onChange={(tags) => changeTags(position, tags)} />
                 <textarea rows={2} value={caption.text} aria-label={`Caption at ${fmtTime(caption.start)}`}
                   onChange={(event) => changeCaption(position, { text: event.target.value })} onKeyDown={(event) => event.stopPropagation()} />
               </div>
             );
           })}
-          {track && !captions.length && <p className="small muted">No movement found: try “Small movements too”.</p>}
+          {track && !askTags && !captions.length && <p className="small muted">No movement found: try “Small movements too”.</p>}
         </div>
       </div>
 
@@ -332,7 +413,8 @@ export function LimbMovements({ video, frames, onTime, onClose }: {
             element.currentTime = ((event.clientX - box.left - 92) / (box.width - 92)) * duration;
           }}>
           {data.limbs.map((limb, row) => (
-            <div key={limb.id} className="limb-lane" style={{ top: row * LANE_HEIGHT }}>
+            <div key={limb.id} className={`limb-lane ${allowed && !allowed.includes(limb.id) ? "off" : ""}`} style={{ top: row * LANE_HEIGHT }}
+              title={allowed && !allowed.includes(limb.id) ? `${limb.label}: not an allowed tag` : undefined}>
               <span className="limb-lane-label" style={{ color: limb.color }}>{limb.label}</span>
               <div className="limb-lane-track">
                 {data.movements.filter((movement) => movement.limb === limb.id).map((movement, number) => (

@@ -206,12 +206,17 @@ def group_moments(movements: list[LimbMovement]) -> list[dict]:
 
 
 def analyse_limbs(
-    analysis: dict, threshold: float = DEFAULT_THRESHOLD, min_duration: float = DEFAULT_MIN_DURATION
+    analysis: dict,
+    threshold: float = DEFAULT_THRESHOLD,
+    min_duration: float = DEFAULT_MIN_DURATION,
+    allowed: list[str] | None = None,
 ) -> dict:
-    """Everything the studio needs: the limbs, every frame's speeds, the movements and the moments."""
+    """Everything the studio needs: the limbs, every frame's speeds, the movements and the moments.
+    ``allowed``: the limbs the moments are made of (the others' movements are still listed)."""
     frames = analysis["frames"]
     speeds = limb_speeds(frames, analysis["fps"])
     movements = find_movements(frames, speeds, threshold, min_duration)
+    in_moments = [movement for movement in movements if allowed is None or movement.limb in allowed]
     return {
         "fps": analysis["fps"],
         "threshold": threshold,
@@ -220,5 +225,5 @@ def analyse_limbs(
         "times": [frame["source_time"] for frame in frames],
         "speeds": speeds,
         "movements": [movement.to_api() for movement in movements],
-        "moments": [{**moment} for moment in group_moments(movements)],
+        "moments": [{**moment} for moment in group_moments(in_moments)],
     }

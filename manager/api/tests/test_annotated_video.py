@@ -50,6 +50,17 @@ def test_captions_are_edited_and_the_annotated_video_is_made(make_client, tmp_pa
         saved = client.put(url, json=track).json()
         assert saved["saved"] and [caption["text"] for caption in saved["captions"]] == ["Lift the right leg"]
         assert client.get(url).json()["anticipation"] == 1.5  # the saved track is used from now on
+        assert client.get(url).json()["allowed_limbs"] is None  # the tags not chosen yet
+
+        # the allowed tags: proposed with them, saved with the track, unknown ones refused
+        fresh = client.get(url, params={"fresh": True, "allowed": "head,torso"}).json()
+        assert fresh["allowed_limbs"] == ["head", "torso"] and fresh["anticipation"] == 1.5
+        assert client.get(url, params={"fresh": True, "allowed": "tail"}).status_code == 422
+        assert client.put(url, json={**track, "allowed_limbs": ["wings"]}).status_code == 422
+        chosen = client.put(url, json={**track, "allowed_limbs": ["right_leg", "body"]}).json()
+        assert chosen["allowed_limbs"] == ["right_leg", "body"]
+        assert client.get(url).json()["allowed_limbs"] == ["right_leg", "body"]
+        saved = chosen
 
         job = client.post(f"/api/videos/{video['id']}/annotated-video", json=saved).json()
         deadline = time.monotonic() + 60
